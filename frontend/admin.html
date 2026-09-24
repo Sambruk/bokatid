@@ -120,10 +120,10 @@
                 <option value="physical">Fysisk plats</option>
                 <option value="other">Annat</option>
               </select></span>
-            <span><label for="oPlatstext" id="oPlatstextEtikett">Platsuppgift</label>
-              <input id="oPlatstext" aria-describedby="oPlatstextHjalp"></span>
+            <span id="oPlatstextFalt"><label for="oPlatstext" id="oPlatstextEtikett">Platsuppgift</label>
+              <input id="oPlatstext"></span>
           </div>
-          <p class="hjalptext hjalptext--under" id="oPlatstextHjalp"></p>
+          <p class="hjalptext hjalptext--under" id="oPlatsHjalp"></p>
 
           <label for="oDeltagare">Deltagare <span class="hjalptext">(en per rad: Namn &lt;adress@exempel.se&gt;)</span></label>
           <textarea id="oDeltagare" style="min-height:5rem"
@@ -185,10 +185,10 @@
                 <option value="physical">Fysisk plats</option>
                 <option value="other">Annat</option>
               </select></span>
-            <span><label for="platstext" id="platstextEtikett">Platsuppgift</label>
-              <input id="platstext" aria-describedby="platstextHjalp"></span>
+            <span id="platstextFalt"><label for="platstext" id="platstextEtikett">Platsuppgift</label>
+              <input id="platstext"></span>
           </div>
-          <p class="hjalptext hjalptext--under" id="platstextHjalp"></p>
+          <p class="hjalptext hjalptext--under" id="platsHjalp"></p>
           <fieldset id="vardarFalt">
             <legend>Fler värdar på den här tjänsten</legend>
             <p class="meta" style="margin-top:0">Väljer du fler personer visas bara tider då
@@ -572,28 +572,38 @@
   });
 
   /* Platsfältet betyder olika saker beroende på mötesform. */
+  /*
+   * Ett Teams-möte har ingen platsuppgift att fylla i — länken skapas per
+   * bokning. Då döljs fältet helt i stället för att stå låst med en förklaring
+   * bredvid: ett fält man inte kan använda är mer i vägen än till hjälp.
+   * Hjälptexten hör till valet av plats, inte till det dolda fältet.
+   */
   function uppdateraPlatsfalt() {
     const typ = document.getElementById('platstyp').value;
     const etikett = document.getElementById('platstextEtikett');
-    const hjalp = document.getElementById('platstextHjalp');
+    const hjalp = document.getElementById('platsHjalp');
     const falt = document.getElementById('platstext');
+    const omslag = document.getElementById('platstextFalt');
+
     if (typ === 'teams') {
-      etikett.textContent = 'Platsuppgift';
-      hjalp.textContent = 'Behövs inte — Teams-länken skapas automatiskt för varje bokning när din kalender är kopplad.';
+      omslag.hidden = true;
       falt.disabled = true;
       falt.value = '';
-    } else if (typ === 'phone') {
+      hjalp.textContent = 'Teams-länk skapas automatiskt för varje bokning.';
+      return;
+    }
+
+    omslag.hidden = false;
+    falt.disabled = false;
+    if (typ === 'phone') {
       etikett.textContent = 'Telefonnummer';
       hjalp.textContent = 'Lämna tomt om du ringer upp bokaren.';
-      falt.disabled = false;
     } else if (typ === 'physical') {
       etikett.textContent = 'Adress';
       hjalp.textContent = 'Visas för bokaren och följer med i kalenderinbjudan.';
-      falt.disabled = false;
     } else {
       etikett.textContent = 'Platsuppgift';
       hjalp.textContent = 'Fri text som visas för bokaren.';
-      falt.disabled = false;
     }
   }
   document.getElementById('platstyp').addEventListener('change', uppdateraPlatsfalt);
@@ -860,18 +870,21 @@
   function platsHjalp() {
     const typ = document.getElementById('oPlatstyp').value;
     const etikett = document.getElementById('oPlatstextEtikett');
-    const hjalp = document.getElementById('oPlatstextHjalp');
+    const hjalp = document.getElementById('oPlatsHjalp');
     const falt = document.getElementById('oPlatstext');
+    const omslag = document.getElementById('oPlatstextFalt');
+
     if (typ === 'teams') {
-      etikett.textContent = 'Platsuppgift';
-      hjalp.textContent = 'Behövs inte — Teams-länken skapas när tiden beslutas.';
+      omslag.hidden = true;
       falt.disabled = true;
       falt.value = '';
-    } else {
-      etikett.textContent = typ === 'phone' ? 'Telefonnummer' : typ === 'physical' ? 'Adress' : 'Platsuppgift';
-      hjalp.textContent = 'Visas för deltagarna.';
-      falt.disabled = false;
+      hjalp.textContent = 'Teams-länk skapas när tiden är beslutad.';
+      return;
     }
+    omslag.hidden = false;
+    falt.disabled = false;
+    etikett.textContent = typ === 'phone' ? 'Telefonnummer' : typ === 'physical' ? 'Adress' : 'Platsuppgift';
+    hjalp.textContent = 'Visas för deltagarna.';
   }
   document.getElementById('oPlatstyp').addEventListener('change', platsHjalp);
 
