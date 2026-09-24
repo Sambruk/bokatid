@@ -44,6 +44,11 @@ function verifyPassword(password, stored) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
+/** sha256 av en token, för att lagra den utan att kunna användas om databasen läcker. */
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
 function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString('base64url');
 }
@@ -58,4 +63,4 @@ function pkce() {
 const b64 = (buf) => buf.toString('base64url');
 const unb64 = (s) => Buffer.from(s, 'base64url');
 
-module.exports = { encrypt, decrypt, hashPassword, verifyPassword, randomToken, pkce };
+module.exports = { encrypt, decrypt, hashPassword, verifyPassword, randomToken, hashToken, pkce };

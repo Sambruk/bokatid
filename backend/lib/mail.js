@@ -178,6 +178,33 @@ async function sendCancellationMails({ booking, host, eventType, reason, cancell
   return { sent: failed.length === 0, errors: failed.map((f) => String(f.reason && f.reason.message)) };
 }
 
+/** Återställningslänk för lösenord. Skickas bara till kontots egen adress. */
+async function sendPasswordReset({ user, url, giltigMinuter = 60 }) {
+  const tp = transport();
+  if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
+  try {
+    await tp.sendMail({
+      from: sender(),
+      to: `"${user.name}" <${user.email}>`,
+      subject: 'Återställ ditt lösenord — Boka tid',
+      html: `
+        <p>Hej ${esc(user.name)},</p>
+        <p>Någon har begärt ett nytt lösenord för ditt konto i Boka tid. Klicka på
+           länken nedan för att välja ett nytt. Länken gäller i ${esc(String(giltigMinuter))} minuter
+           och kan bara användas en gång.</p>
+        <p><a href="${esc(url)}">Välj nytt lösenord</a><br>
+           <span style="color:#53605a">${esc(url)}</span></p>
+        <p>Var det inte du behöver du inte göra något — lösenordet ändras inte
+           förrän någon använder länken. Men hör gärna av dig till oss om du inte
+           känner igen begäran.</p>
+        <p>Hälsningar<br>Sambruk</p>`,
+    });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, errors: [String(err.message)] };
+  }
+}
+
 /* ---------- omröstningar ---------- */
 
 const tidRad = (o) => formatSwedish(new Date(o.start_utc).toISOString(), new Date(o.end_utc).toISOString(), TZ);
@@ -314,6 +341,7 @@ function answersHtml(answers) {
 }
 
 module.exports = {
+  sendPasswordReset,
   sendBookingMails,
   sendCancellationMails,
   sendPollInvitation,

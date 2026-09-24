@@ -250,3 +250,20 @@ CREATE TABLE IF NOT EXISTS booking_hosts (
 );
 
 CREATE INDEX IF NOT EXISTS booking_hosts_user ON booking_hosts (user_id);
+
+-- ---------------------------------------------------------------------------
+-- Återställning av lösenord.
+-- Token lagras som sha256-hash: läcker databasen ska ingen kunna använda en
+-- ännu giltig länk. Engångsbruk och kort livslängd.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_ip TEXT
+);
+
+CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets (user_id);

@@ -41,6 +41,19 @@
         <input id="losenord" type="password" autocomplete="current-password" required>
         <p class="rad rad--knappar"><button type="submit">Logga in</button></p>
       </form>
+
+      <p><button type="button" class="knapp--enkel" id="glomtKnapp">Glömt lösenordet?</button></p>
+
+      <form id="glomtForm" hidden>
+        <label for="glomtEpost">Din e-postadress</label>
+        <input id="glomtEpost" type="email" autocomplete="username" required>
+        <p class="hjalptext hjalptext--under">Vi skickar en länk där du väljer ett nytt lösenord.
+          Länken gäller i en timme.</p>
+        <p class="rad rad--knappar">
+          <button type="submit" id="glomtSkicka">Skicka länk</button>
+          <button type="button" class="knapp--enkel" id="glomtAvbryt">Avbryt</button>
+        </p>
+      </form>
     </section>
 
     <!-- Administration -->
@@ -288,6 +301,11 @@
               <select id="aRoll"><option value="host">Användare</option><option value="admin">Superadmin</option></select></span>
           </div>
           <p id="aStatusRad" hidden><label><input type="checkbox" id="aAktiv" checked> Aktiv — kan logga in och bokas</label></p>
+          <div class="rad">
+            <span><label for="aLosen">Lösenord <span class="hjalptext">(frivilligt, minst 12 tecken)</span></label>
+              <input id="aLosen" type="password" autocomplete="new-password" minlength="12"></span>
+            <span style="flex:0 0 auto"><button type="button" class="knapp--enkel" id="aSlumpa">Slumpa ett</button></span>
+          </div>
           <p class="meta" id="aHjalp">Lösenord behövs inte om personen loggar in med Microsoft — det är den
              enklaste vägen och kopplar kalendern i samma steg.</p>
           <p class="rad rad--knappar">
@@ -1485,7 +1503,7 @@
         if (!confirm(`Sätt ett nytt lösenord för ${u.name}? Personen loggas ut.`)) return;
         try {
           const r = await skicka(`${bas}/api/admin/users/${u.id}/password`, {});
-          notis(meddelande, `Nytt lösenord för ${u.name}: ${r.password} — lämna det på ett säkert sätt, det visas bara nu.`, 'ok');
+          notis(meddelande, `Slumpat lösenord för ${u.name}: ${r.password} — lämna det på ett säkert sätt, det visas bara nu. Vill du välja ett själv: använd Ändra.`, 'ok');
         } catch (err) {
           notis(meddelande, err.message, 'fel');
         }
@@ -1503,6 +1521,9 @@
     document.getElementById('aSlug').value = u ? u.slug : '';
     document.getElementById('aRoll').value = u ? u.role : 'host';
     document.getElementById('aAktiv').checked = u ? u.active : true;
+    const losenFalt = document.getElementById('aLosen');
+    losenFalt.value = '';
+    losenFalt.type = 'password';
     document.getElementById('aStatusRad').hidden = !u;
     document.getElementById('aAvbryt').hidden = !u;
     document.getElementById('aSpara').textContent = u ? 'Spara ändringar' : 'Lägg upp användare';
@@ -1528,6 +1549,15 @@
 
   document.getElementById('aAvbryt').addEventListener('click', () => fyllAnvandarFormular(null));
 
+  document.getElementById('aSlumpa').addEventListener('click', () => {
+    const tecken = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const slump = crypto.getRandomValues(new Uint32Array(16));
+    const falt = document.getElementById('aLosen');
+    falt.value = [...slump].map((n) => tecken[n % tecken.length]).join('');
+    falt.type = 'text'; // Superadmin måste kunna läsa det för att lämna vidare.
+    notis(meddelande, 'Lösenordet är bara ett förslag tills du sparar. Kopiera det innan du lämnar sidan.', 'info');
+  });
+
   document.getElementById('anvandarForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const id = document.getElementById('aId').value;
@@ -1541,6 +1571,12 @@
     const knapp = document.getElementById('aSpara');
     knapp.disabled = true;
     try {
+      const losen = document.getElementById('aLosen').value;
+      if (losen && losen.length < 12) {
+        knapp.disabled = false;
+        return notis(meddelande, 'Lösenordet måste vara minst 12 tecken.', 'fel');
+      }
+
       if (id) {
         kropp.active = document.getElementById('aAktiv').checked;
         if (!kropp.active && !confirm('Stänga av användaren? Personen loggas ut och kan inte bokas.')) {
@@ -1548,16 +1584,22 @@
           return;
         }
         const r = await skicka(`${bas}/api/admin/users/${id}`, kropp, 'PUT');
+        const delar = ['Användaren är sparad.'];
+        if (r.epostBytt) delar.push('E-postadressen är ändrad — personen loggar nu in med den nya adressen.');
+        if (losen) {
+          await skicka(`${bas}/api/admin/users/${id}/password`, { password: losen });
+          delar.push('Lösenordet är satt och personen är utloggad från tidigare sessioner.');
+        }
+        notis(meddelande, delar.join(' '), 'ok');
+      } else {
+        if (losen) kropp.password = losen;
+        const r = await skicka(`${bas}/api/admin/users`, kropp);
         notis(
           meddelande,
-          r.epostBytt
-            ? 'Användaren är sparad. E-postadressen är ändrad — personen loggar nu in med den nya adressen.'
-            : 'Användaren är sparad.',
+          `Användaren är upplagd${losen ? ' med det angivna lösenordet' : ''}. ` +
+            `Bokningssidan blir ${location.origin}${bas}/${r.slug} när en tjänst lagts upp.`,
           'ok'
         );
-      } else {
-        const r = await skicka(`${bas}/api/admin/users`, kropp);
-        notis(meddelande, `Användaren är upplagd. Bokningssidan blir ${location.origin}${bas}/${r.slug} när en tjänst lagts upp.`, 'ok');
       }
       document.getElementById('anvandarForm').reset();
       fyllAnvandarFormular(null);
@@ -1711,6 +1753,42 @@
     await skicka(`${bas}/api/admin/organization/logo`, undefined, 'DELETE');
     notis(meddelande, 'Logotypen är borttagen.', 'ok');
     await laddaOrganisation();
+  });
+
+
+  /* ---- glömt lösenordet ---- */
+
+  document.getElementById('glomtKnapp').addEventListener('click', () => {
+    document.getElementById('glomtForm').hidden = false;
+    document.getElementById('glomtKnapp').hidden = true;
+    document.getElementById('glomtEpost').value = document.getElementById('epost').value;
+    document.getElementById('glomtEpost').focus();
+  });
+
+  document.getElementById('glomtAvbryt').addEventListener('click', () => {
+    document.getElementById('glomtForm').hidden = true;
+    document.getElementById('glomtKnapp').hidden = false;
+    document.getElementById('epost').focus();
+  });
+
+  document.getElementById('glomtForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const knapp = document.getElementById('glomtSkicka');
+    knapp.disabled = true;
+    try {
+      const svar = await skicka(`${bas}/api/losenord/begar`, {
+        email: document.getElementById('glomtEpost').value,
+      });
+      // Samma besked oavsett om adressen finns: annars går det att lista ut
+      // vilka konton som existerar.
+      notis(meddelande, svar.besked, 'ok');
+      document.getElementById('glomtForm').hidden = true;
+      document.getElementById('glomtKnapp').hidden = false;
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
   });
 
   /* ---- uppstart ---- */

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Välj nytt lösenord</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<a class="hoppa-till" href="#innehall">Hoppa till innehållet</a>
+<header class="topp">
+  <div class="omslag topp__rad">
+      <div class="topp__vanster">
+        <span class="topp__logglank" id="orgLank"></span>
+        <p class="topp__app">Boka tid</p>
+      </div>
+      <p class="topp__org" id="orgNamn"></p>
+      <p class="idag" id="idag"></p>
+    </div>
+</header>
+
+<main id="innehall">
+  <div class="omslag">
+    <h1 id="rubrik">Välj nytt lösenord</h1>
+    <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
+    <form id="formular" class="kort" style="max-width:28rem" hidden>
+      <p id="halsning" class="meta"></p>
+
+      <label for="nytt">Nytt lösenord</label>
+      <input id="nytt" type="password" autocomplete="new-password" required>
+      <p class="hjalptext hjalptext--under" id="krav">Minst 12 tecken.</p>
+
+      <label for="upprepa">Upprepa lösenordet</label>
+      <input id="upprepa" type="password" autocomplete="new-password" required>
+
+      <p><label style="font-weight:400"><input type="checkbox" id="visa" style="width:auto;margin-right:0.4rem">
+        Visa lösenordet</label></p>
+
+      <p class="rad rad--knappar">
+        <button type="submit" id="spara">Spara nytt lösenord</button>
+      </p>
+    </form>
+
+    <p id="klart" hidden>
+      <a class="knapp" id="tillInloggning" href="#">Till inloggningen</a>
+    </p>
+  </div>
+</main>
+
+<footer><div class="omslag">Sambruk — öppen källkod</div></footer>
+
+<script src="../js/gemensamt.js"></script>
+<script>
+(async () => {
+  const delar = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  const token = delar[delar.length - 1];
+  const bas = basvag(2);
+  visaIdag(document.getElementById('idag'));
+  await visaOrganisation(bas);
+
+  const meddelande = document.getElementById('notis');
+  const formular = document.getElementById('formular');
+
+  // Kontrollera länken innan formuläret visas, så ingen fyller i i onödan.
+  let uppgifter;
+  try {
+    uppgifter = await hamta(`${bas}/api/losenord/${encodeURIComponent(token)}`);
+  } catch (err) {
+    document.getElementById('rubrik').textContent = 'Länken fungerar inte';
+    notis(meddelande, `${err.message} Gå till inloggningen och välj "Glömt lösenordet?".`, 'fel');
+    const p = document.getElementById('klart');
+    document.getElementById('tillInloggning').href = `${bas}/admin`;
+    p.hidden = false;
+    return;
+  }
+
+  formular.hidden = false;
+  document.getElementById('halsning').textContent = `Kontot tillhör ${uppgifter.name}.`;
+  document.getElementById('krav').textContent = `Minst ${uppgifter.minstaLangd} tecken.`;
+  document.getElementById('nytt').focus();
+
+  document.getElementById('visa').addEventListener('change', (ev) => {
+    const typ = ev.target.checked ? 'text' : 'password';
+    document.getElementById('nytt').type = typ;
+    document.getElementById('upprepa').type = typ;
+  });
+
+  formular.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const nytt = document.getElementById('nytt').value;
+    const upprepa = document.getElementById('upprepa').value;
+
+    if (nytt.length < uppgifter.minstaLangd) {
+      return notis(meddelande, `Lösenordet måste vara minst ${uppgifter.minstaLangd} tecken.`, 'fel');
+    }
+    if (nytt !== upprepa) {
+      return notis(meddelande, 'De två lösenorden är inte lika.', 'fel');
+    }
+
+    const knapp = document.getElementById('spara');
+    knapp.disabled = true;
+    try {
+      await skicka(`${bas}/api/losenord/${encodeURIComponent(token)}`, { password: nytt });
+      document.getElementById('rubrik').textContent = 'Lösenordet är bytt';
+      notis(meddelande, 'Klart. Alla tidigare inloggningar är uppsagda — logga in med det nya lösenordet.', 'ok');
+      formular.hidden = true;
+      document.getElementById('tillInloggning').href = `${bas}/admin`;
+      document.getElementById('klart').hidden = false;
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+      knapp.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

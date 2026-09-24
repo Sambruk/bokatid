@@ -108,7 +108,26 @@ dessutom upp konton, sätter roller, stänger av konton och bestämmer
 organisationens utseende.
 
 Superadmin redigerar en användares namn, titel, kortnamn, e-postadress, roll och
-status i ett och samma formulär. Två saker att veta: en ändrad e-postadress är den
+status i ett och samma formulär, och kan sätta ett valt lösenord eller låta
+tjänsten slumpa ett.
+
+### Lösenord
+
+Tre vägar, alla med minst 12 tecken som krav:
+
+- **Superadmin sätter ett lösenord** när kontot skapas eller ändras.
+- **Användaren återställer själv** via "Glömt lösenordet?" på inloggningssidan.
+  Länken mejlas till kontots adress, gäller i en timme och kan användas en gång.
+- **Användaren byter som inloggad** under fliken Konto, med nuvarande lösenord som
+  kontroll.
+
+Återställningsformuläret svarar likadant oavsett om adressen finns eller inte —
+annars blir det ett sätt att ta reda på vilka konton som existerar. Vad som
+faktiskt hände står i granskningsloggen. Länkarna lagras som sha256-hash, så en
+läckt databas inte innehåller användbara länkar, och varje lösenordsbyte säger
+upp alla pågående sessioner: har någon annan kommit åt kontot kastas den ut.
+
+Den som loggar in med Microsoft behöver inget lösenord alls. Två saker att veta: en ändrad e-postadress är den
 personen loggar in med i fortsättningen, även via Microsoft (kalenderkopplingen
 följer med kontot), och ett ändrat kortnamn gör tidigare delade bokningslänkar
 ogiltiga.

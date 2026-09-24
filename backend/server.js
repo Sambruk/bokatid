@@ -8,7 +8,7 @@ const { DateTime } = require('luxon');
 
 const { pool, q, waitForDatabase, applySchema, seed, audit } = require('./lib/db');
 const { availableSlots, isSlotAvailable, intersectDays, formatSwedish } = require('./lib/slots');
-const { encrypt, decrypt, verifyPassword, hashPassword, randomToken, pkce } = require('./lib/crypto');
+const { encrypt, decrypt, verifyPassword, hashPassword, randomToken, hashToken, pkce } = require('./lib/crypto');
 const graph = require('./lib/graph');
 const mail = require('./lib/mail');
 const { gallra, startaGallring, inställningar: gallringInst } = require('./lib/gallring');
@@ -666,6 +666,94 @@ router.get('/api/me', async (req, res) => {
   });
 });
 
+/* ---------- glömt lösenord ---------- */
+
+const LOSENORD_MINSTA = 12;
+
+/**
+ * Begär en återställningslänk. Svaret är alltid detsamma oavsett om adressen
+ * finns eller inte: annars blir formuläret ett sätt att lista ut vilka konton
+ * som existerar. Vad som faktiskt hände står i granskningsloggen.
+ */
+router.post('/api/losenord/begar', async (req, res) => {
+  const email = str(req.body?.email, 254).toLowerCase();
+  const svar = {
+    ok: true,
+    besked: 'Finns ett konto med den adressen är en återställningslänk på väg. Kontrollera även skräpposten.',
+  };
+
+  if (!rateLimit(`atersRequest:${req.ip}`, 5, 15 * 60_000)) {
+    return bad(res, 429, 'För många försök. Vänta en stund och försök igen.');
+  }
+  if (!isEmail(email)) return res.json(svar);
+
+  const { rows } = await q('SELECT * FROM users WHERE lower(email) = $1 AND active', [email]);
+  const user = rows[0];
+  if (!user) {
+    await audit(email, 'losenord_begart_okand_adress', { ip: req.ip });
+    return res.json(svar);
+  }
+
+  // Tidigare obrukade länkar slutar gälla när en ny begärs.
+  await q('DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+
+  const token = randomToken(32);
+  await q(
+    `INSERT INTO password_resets (token_hash, user_id, expires_at, created_ip)
+     VALUES ($1, $2, now() + interval '60 minutes', $3)`,
+    [hashToken(token), user.id, req.ip]
+  );
+
+  const resultat = await mail.sendPasswordReset({
+    user,
+    url: `${PUBLIC_URL}/nytt-losenord/${token}`,
+    giltigMinuter: 60,
+  });
+  await audit(user.email, 'losenord_begart', { mailAccepted: resultat.sent, ip: req.ip });
+  res.json(svar);
+});
+
+/** Kontrollerar en länk innan formuläret visas, utan att röra något. */
+router.get('/api/losenord/:token', async (req, res) => {
+  const { rows } = await q(
+    `SELECT u.name, u.email FROM password_resets r JOIN users u ON u.id = r.user_id
+     WHERE r.token_hash = $1 AND r.used_at IS NULL AND r.expires_at > now() AND u.active`,
+    [hashToken(str(req.params.token, 200))]
+  );
+  if (!rows[0]) return bad(res, 404, 'Länken är använd eller har gått ut. Begär en ny.');
+  res.json({ ok: true, name: rows[0].name, minstaLangd: LOSENORD_MINSTA });
+});
+
+router.post('/api/losenord/:token', async (req, res) => {
+  if (!rateLimit(`atersSet:${req.ip}`, 10, 15 * 60_000)) return bad(res, 429, 'För många försök.');
+
+  const nytt = String(req.body?.password || '');
+  if (nytt.length < LOSENORD_MINSTA) {
+    return bad(res, 400, `Lösenordet måste vara minst ${LOSENORD_MINSTA} tecken.`);
+  }
+
+  // Token förbrukas i samma sats som den läses, så en länk inte kan användas
+  // två gånger av två samtidiga anrop.
+  const { rows } = await q(
+    `UPDATE password_resets SET used_at = now()
+     WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+     RETURNING user_id`,
+    [hashToken(str(req.params.token, 200))]
+  );
+  if (!rows[0]) return bad(res, 404, 'Länken är använd eller har gått ut. Begär en ny.');
+
+  const { rows: anv } = await q(
+    'UPDATE users SET password_hash = $2 WHERE id = $1 AND active RETURNING email',
+    [rows[0].user_id, hashPassword(nytt)]
+  );
+  if (!anv[0]) return bad(res, 404, 'Kontot är avstängt.');
+
+  // Alla sessioner sägs upp: har någon annan kommit åt kontot ska den kastas ut.
+  await q('DELETE FROM sessions WHERE user_id = $1', [rows[0].user_id]);
+  await audit(anv[0].email, 'losenord_aterstallt', { ip: req.ip });
+  res.json({ ok: true });
+});
+
 /* ---------- M365-koppling ---------- */
 
 router.get('/auth/ms/start', async (req, res) => {
@@ -1050,7 +1138,9 @@ router.post('/api/admin/gallring', requireAuth, async (req, res) => {
 router.put('/api/admin/password', requireAuth, async (req, res) => {
   const current = String(req.body?.current || '');
   const next = String(req.body?.next || '');
-  if (next.length < 12) return bad(res, 400, 'Nytt lösenord måste vara minst 12 tecken');
+  if (next.length < LOSENORD_MINSTA) {
+    return bad(res, 400, `Nytt lösenord måste vara minst ${LOSENORD_MINSTA} tecken`);
+  }
   const { rows } = await q('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
   if (rows[0]?.password_hash && !verifyPassword(current, rows[0].password_hash)) {
     return bad(res, 401, 'Fel nuvarande lösenord');
@@ -1121,6 +1211,7 @@ router.get('/', page('index.html'));
 router.get('/admin', page('admin.html'));
 router.get('/avboka/:token', page('avboka.html'));
 router.get('/omrostning/:token', page('omrostning.html'));
+router.get('/nytt-losenord/:token', page('nytt-losenord.html'));
 router.get('/:hostSlug', page('vard.html'));
 router.get('/:hostSlug/:eventSlug', page('boka.html'));
 
@@ -1158,6 +1249,7 @@ app.use((err, req, res, next) => {
   setInterval(() => {
     q('DELETE FROM sessions WHERE expires_at < now()').catch(() => {});
     q('DELETE FROM oauth_states WHERE expires_at < now()').catch(() => {});
+    q("DELETE FROM password_resets WHERE expires_at < now() - interval '7 days'").catch(() => {});
   }, 3600_000).unref();
 
   app.listen(PORT, () => {
