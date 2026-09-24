@@ -121,9 +121,9 @@
                 <option value="other">Annat</option>
               </select></span>
             <span><label for="oPlatstext" id="oPlatstextEtikett">Platsuppgift</label>
-              <input id="oPlatstext">
-              <span class="hjalptext" id="oPlatstextHjalp"></span></span>
+              <input id="oPlatstext" aria-describedby="oPlatstextHjalp"></span>
           </div>
+          <p class="hjalptext hjalptext--under" id="oPlatstextHjalp"></p>
 
           <label for="oDeltagare">Deltagare <span class="hjalptext">(en per rad: Namn &lt;adress@exempel.se&gt;)</span></label>
           <textarea id="oDeltagare" style="min-height:5rem"
@@ -186,9 +186,9 @@
                 <option value="other">Annat</option>
               </select></span>
             <span><label for="platstext" id="platstextEtikett">Platsuppgift</label>
-              <input id="platstext" aria-describedby="platstextHjalp">
-              <span class="hjalptext" id="platstextHjalp"></span></span>
+              <input id="platstext" aria-describedby="platstextHjalp"></span>
           </div>
+          <p class="hjalptext hjalptext--under" id="platstextHjalp"></p>
           <fieldset id="vardarFalt">
             <legend>Fler värdar på den här tjänsten</legend>
             <p class="meta" style="margin-top:0">Väljer du fler personer visas bara tider då
