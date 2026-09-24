@@ -1,8 +1,7 @@
 # Boka tid
 
 Mötesbokning för offentlig sektor. En person publicerar sina bokningsbara tider,
-andra väljer en tid som passar, och mötet hamnar i kalendern. Samma sak som
-Calendly gör — men självdriftad, på svenska, med uppgifterna kvar hos
+andra väljer en tid som passar, och mötet hamnar i kalendern. Självdriftad, på svenska, med uppgifterna kvar hos
 verksamheten.
 
 Utvecklad av [Sambruk](https://sambruk.se) som öppen källkod.
