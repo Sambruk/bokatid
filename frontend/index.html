@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boka tid — Sambruk</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<a class="hoppa-till" href="#innehall">Hoppa till innehållet</a>
+<header class="topp">
+  <div class="omslag topp__rad">
+      <div class="topp__vanster">
+        <span class="topp__logglank" id="orgLank"></span>
+        <p class="topp__app">Boka tid</p>
+      </div>
+      <p class="topp__org" id="orgNamn"></p>
+      <p class="idag" id="idag"></p>
+    </div>
+</header>
+
+<main id="innehall">
+  <div class="omslag">
+    <h1>Boka en tid med Sambruk</h1>
+    <p>Välj vem du vill träffa och en tid som passar. Du får en bekräftelse på e-post
+       med kalenderinbjudan och en länk för att avboka.</p>
+
+    <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
+    <div id="vardar"></div>
+
+    <h2>Om tjänsten</h2>
+    <p>Boka tid är utvecklad av <a href="https://sambruk.se">Sambruk</a> som öppen källkod,
+       för att kommuner och andra offentliga verksamheter ska kunna erbjuda tidsbokning
+       utan att lämna uppgifter till en leverantör utanför EU.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="omslag">Sambruk — öppen källkod. <a href="admin">Logga in som värd</a></div>
+</footer>
+
+<script src="js/gemensamt.js"></script>
+<script>
+(async () => {
+  const bas = basvag(0);
+  visaIdag(document.getElementById('idag'));
+  await visaOrganisation(bas);
+  const ut = document.getElementById('vardar');
+  const meddelande = document.getElementById('notis');
+
+  try {
+    const data = await hamta(`${bas}/api/hosts`);
+    const vardar = (data.hosts || []).filter((v) => v.event_types.length);
+    if (!vardar.length) {
+      notis(meddelande, 'Det finns inga bokningsbara tider upplagda ännu.', 'info');
+      return;
+    }
+    for (const vard of vardar) {
+      const sektion = document.createElement('section');
+      sektion.className = 'kort';
+      const rubrik = document.createElement('h2');
+      rubrik.textContent = vard.name + (vard.title ? `, ${vard.title}` : '');
+      rubrik.style.marginTop = '0';
+      sektion.append(rubrik);
+
+      const ul = document.createElement('ul');
+      ul.className = 'lista';
+      for (const typ of vard.event_types) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.className = 'block';
+        a.href = `${bas}/${vard.slug}/${typ.slug}`;
+        const stark = document.createElement('strong');
+        stark.textContent = typ.title;
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = ` — ${typ.duration_min} minuter`;
+        a.append(stark, meta);
+        li.append(a);
+        ul.append(li);
+      }
+      sektion.append(ul);
+      ut.append(sektion);
+    }
+  } catch (err) {
+    notis(meddelande, `Kunde inte hämta värdar: ${err.message}`, 'fel');
+  }
+})();
+</script>
+</body>
+</html>

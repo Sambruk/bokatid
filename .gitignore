@@ -1,0 +1,27 @@
+# Hemligheter — får aldrig committas
+.env
+!.env.example   # mallen ska med, den riktiga filen aldrig
+*.pem
+*.key
+
+# Beroenden och data
+node_modules/
+db/postgres-data/
+
+# Intern arbetslogg med driftuppgifter: servernamn, portar och kända svagheter i
+# infrastrukturen. Hör inte i ett publikt repo. Se ROADMAP.md för läget utåt.
+TODO.md
+
+# Tom fil som Docker skapar på värden när db/schema.sql monteras in i /app.
+# Det riktiga schemat bor i db/schema.sql.
+backend/schema.sql
+
+# Uppladdade logotyper är driftdata, inte källkod
+media/*
+!media/.gitkeep
+
+# Skräp
+*.log
+*.bak
+*.bak[0-9]*
+.DS_Store

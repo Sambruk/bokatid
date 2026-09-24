@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Svara om mötestid</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<a class="hoppa-till" href="#innehall">Hoppa till innehållet</a>
+<header class="topp">
+  <div class="omslag omslag--bred topp__rad">
+      <div class="topp__vanster">
+        <span class="topp__logglank" id="orgLank"></span>
+        <p class="topp__app">Boka tid</p>
+      </div>
+      <p class="topp__org" id="orgNamn"></p>
+      <p class="idag" id="idag"></p>
+    </div>
+</header>
+
+<main id="innehall">
+  <div class="omslag omslag--bred">
+    <h1 id="rubrik">Hämtar…</h1>
+    <p class="meta" id="undertext"></p>
+    <p id="beskrivning"></p>
+
+    <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
+    <section id="beslutad" class="kort" hidden aria-labelledby="rubrik-beslutad">
+      <h2 id="rubrik-beslutad" tabindex="-1" style="margin-top:0">Tiden är bestämd</h2>
+      <p id="beslutadTid" style="font-size:1.1rem;font-weight:600"></p>
+      <p id="beslutadPlats"></p>
+    </section>
+
+    <form id="formular">
+      <h2 id="rubrik-tider">Vilka tider fungerar för dig?</h2>
+      <p class="meta">Alla tider visas i svensk tid. Svara på så många du kan — det blir
+         lättare att hitta en tid som passar alla.</p>
+
+      <div id="tider"></div>
+
+      <fieldset id="dinaUppgifter">
+        <legend>Dina uppgifter</legend>
+        <div class="rad">
+          <span><label for="namn">Namn <span class="hjalptext">(obligatoriskt)</span></label>
+            <input id="namn" autocomplete="name" required></span>
+          <span><label for="epost">E-postadress <span class="hjalptext">(obligatoriskt)</span></label>
+            <input id="epost" type="email" autocomplete="email" inputmode="email" required></span>
+          <span><label for="org">Organisation <span class="hjalptext">(frivilligt)</span></label>
+            <input id="org" autocomplete="organization"></span>
+        </div>
+        <p class="meta" style="margin-top:0.75rem">
+          Uppgifterna används för att komma överens om en mötestid. Ditt namn visas för
+          de andra deltagarna, din e-postadress gör det inte.
+        </p>
+      </fieldset>
+
+      <p class="rad rad--knappar">
+        <button type="submit" id="skicka">Skicka mitt svar</button>
+      </p>
+    </form>
+
+    <section id="andrasSvar" hidden>
+      <h2>Vad andra har svarat</h2>
+      <div class="tabellomslag"><table id="svarTabell">
+        <thead><tr id="svarRubrik"><th scope="col">Deltagare</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+  </div>
+</main>
+
+<footer><div class="omslag omslag--bred">Sambruk — öppen källkod</div></footer>
+
+<script src="../js/gemensamt.js"></script>
+<script>
+(async () => {
+  const delar = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  const token = delar[delar.length - 1];
+  const bas = basvag(2);
+  const svarToken = new URLSearchParams(location.search).get('svar') || '';
+  visaIdag(document.getElementById('idag'));
+  await visaOrganisation(bas);
+
+  const meddelande = document.getElementById('notis');
+  const formular = document.getElementById('formular');
+  const tiderEl = document.getElementById('tider');
+
+  const SVARSTEXT = { ja: 'Ja', kanske: 'Om jag måste', nej: 'Nej' };
+
+  let data;
+  try {
+    data = await hamta(`${bas}/api/poll/${encodeURIComponent(token)}${svarToken ? `?svar=${encodeURIComponent(svarToken)}` : ''}`);
+  } catch (err) {
+    document.getElementById('rubrik').textContent = 'Omröstningen finns inte';
+    notis(meddelande, 'Länken är felaktig, eller omröstningen är borttagen.', 'fel');
+    formular.hidden = true;
+    return;
+  }
+
+  document.title = `${data.title} — svara om mötestid`;
+  document.getElementById('rubrik').textContent = data.title;
+  document.getElementById('undertext').textContent =
+    `${data.duration_min} minuter med ${data.host.name}${data.host.title ? `, ${data.host.title}` : ''}`;
+  if (data.description) document.getElementById('beskrivning').textContent = data.description;
+
+  // Redan beslutad: visa tiden och stäng formuläret.
+  if (data.status === 'decided') {
+    document.getElementById('beslutad').hidden = false;
+    document.getElementById('beslutadTid').textContent = data.beslutadTid || '';
+    const plats = document.getElementById('beslutadPlats');
+    if (data.joinUrl) {
+      const a = document.createElement('a');
+      a.href = data.joinUrl;
+      a.textContent = 'Anslut till Teams-mötet';
+      plats.append(a);
+    } else if (data.location) {
+      plats.textContent = data.location;
+    }
+    formular.hidden = true;
+  } else if (data.status === 'cancelled') {
+    notis(meddelande, 'Omröstningen är avbruten och något möte bokas inte utifrån den.', 'info');
+    formular.hidden = true;
+  } else if (data.status === 'closed') {
+    notis(meddelande, 'Omröstningen är stängd för nya svar. Besked om tiden kommer via e-post.', 'info');
+    formular.hidden = true;
+  }
+
+  if (data.jag) {
+    document.getElementById('namn').value = data.jag.name || '';
+    document.getElementById('org').value = data.jag.org || '';
+    const epost = document.getElementById('epost');
+    // Adressen är redan känd via den personliga länken och behöver inte fyllas i.
+    epost.required = false;
+    epost.closest('span').hidden = true;
+    if (Object.keys(data.jag.svar).length) {
+      notis(meddelande, 'Du har redan svarat. Ändra gärna om något har förändrats.', 'info');
+    }
+  }
+
+  // Ett fält per föreslagen tid, med tre svarsalternativ.
+  for (const tid of data.options) {
+    const grupp = document.createElement('fieldset');
+    grupp.style.marginBottom = '0.75rem';
+    if (tid.beslutad) grupp.style.borderColor = 'var(--gron)';
+
+    const legend = document.createElement('legend');
+    legend.textContent = `${tid.datum}, ${tid.tid}`;
+    legend.style.textTransform = 'capitalize';
+    grupp.append(legend);
+
+    const rakning = document.createElement('p');
+    rakning.className = 'meta';
+    rakning.style.margin = '0 0 0.5rem';
+    rakning.textContent =
+      `Hittills: ${tid.rakning.ja} ja, ${tid.rakning.kanske} om jag måste, ${tid.rakning.nej} nej`;
+    grupp.append(rakning);
+
+    const val = document.createElement('div');
+    val.className = 'rad rad--knappar';
+    for (const [varde, text] of Object.entries(SVARSTEXT)) {
+      const id = `t${tid.id}_${varde}`;
+      const omslag = document.createElement('span');
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = `tid_${tid.id}`;
+      radio.id = id;
+      radio.value = varde;
+      radio.style.width = 'auto';
+      radio.style.marginRight = '0.35rem';
+      if (data.jag && data.jag.svar[tid.id] === varde) radio.checked = true;
+      const etikett = document.createElement('label');
+      etikett.setAttribute('for', id);
+      etikett.textContent = text;
+      etikett.style.display = 'inline';
+      etikett.style.fontWeight = '400';
+      omslag.append(radio, etikett);
+      val.append(omslag);
+    }
+    grupp.append(val);
+    tiderEl.append(grupp);
+  }
+
+  // Tabell över andras svar.
+  if (data.svarande && data.svarande.length) {
+    const rubrikRad = document.getElementById('svarRubrik');
+    for (const tid of data.options) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = `${tid.datum} ${tid.tid}`;
+      rubrikRad.append(th);
+    }
+    const tbody = document.querySelector('#svarTabell tbody');
+    for (const person of data.svarande) {
+      const tr = tbody.insertRow();
+      const namn = tr.insertCell();
+      namn.textContent = person.name + (person.org ? ` (${person.org})` : '');
+      for (const tid of data.options) {
+        const cell = tr.insertCell();
+        const svar = person.svar[tid.id];
+        cell.textContent = svar ? SVARSTEXT[svar] : '–';
+        if (svar === 'ja') cell.style.color = 'var(--gron)';
+        if (svar === 'nej') cell.style.color = 'var(--text-svag)';
+      }
+    }
+    document.getElementById('andrasSvar').hidden = false;
+  } else if (data.hideNames) {
+    const info = document.createElement('p');
+    info.className = 'meta';
+    info.textContent = 'Övriga deltagares svar visas inte i den här omröstningen.';
+    document.getElementById('andrasSvar').append(info);
+    document.getElementById('andrasSvar').hidden = false;
+  }
+
+  formular.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const knapp = document.getElementById('skicka');
+    const svar = {};
+    for (const tid of data.options) {
+      const vald = formular.querySelector(`input[name="tid_${tid.id}"]:checked`);
+      if (vald) svar[tid.id] = vald.value;
+    }
+    if (!Object.keys(svar).length) {
+      return notis(meddelande, 'Svara på minst en av tiderna.', 'fel');
+    }
+
+    knapp.disabled = true;
+    rensaNotis(meddelande);
+    try {
+      await skicka(`${bas}/api/poll/${encodeURIComponent(token)}/vote`, {
+        svarToken,
+        name: document.getElementById('namn').value,
+        email: document.getElementById('epost').value,
+        org: document.getElementById('org').value,
+        svar,
+      });
+      notis(meddelande, 'Tack! Ditt svar är sparat. Du får besked via e-post när tiden är bestämd.', 'ok');
+      formular.hidden = true;
+      document.getElementById('rubrik').scrollIntoView({ block: 'start' });
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+      knapp.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

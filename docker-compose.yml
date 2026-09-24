@@ -1,0 +1,56 @@
+services:
+  boka-tid-postgres:
+    image: postgres:16-alpine
+    network_mode: bridge
+    ports:
+      - "172.17.0.1:15434:5432"
+    volumes:
+      - /opt/app/boka-tid/db/postgres-data:/var/lib/postgresql/data
+      - /opt/app/boka-tid/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    environment:
+      POSTGRES_DB: boka
+      POSTGRES_USER: boka
+      POSTGRES_PASSWORD: ${BOKA_DB_PASSWORD}
+    restart: always
+
+  boka-tid-app:
+    image: node:20-alpine
+    network_mode: bridge
+    working_dir: /app
+    ports:
+      - "172.17.0.1:13900:3000"
+    volumes:
+      - /opt/app/boka-tid/backend:/app
+      - /opt/app/boka-tid/frontend:/app/public
+      - /opt/app/boka-tid/db/schema.sql:/app/schema.sql:ro
+      - /opt/app/boka-tid/media:/app/media
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      TZ: Europe/Stockholm
+      BASE_PATH: /boka
+      DATABASE_URL: postgresql://boka:${BOKA_DB_PASSWORD}@172.17.0.1:15434/boka
+      SESSION_SECRET: ${BOKA_SESSION_SECRET}
+      TOKEN_KEY: ${BOKA_TOKEN_KEY}
+      ADMIN_EMAIL: ${BOKA_ADMIN_EMAIL}
+      ADMIN_NAME: ${BOKA_ADMIN_NAME}
+      ADMIN_SLUG: ${BOKA_ADMIN_SLUG}
+      ADMIN_PASSWORD: ${BOKA_ADMIN_PASSWORD}
+      ALLOWED_EMAIL_DOMAINS: ${BOKA_ALLOWED_EMAIL_DOMAINS}
+      GALLRING_BOKNINGAR_DAGAR: ${BOKA_GALLRING_BOKNINGAR_DAGAR}
+      GALLRING_OMROSTNINGAR_DAGAR: ${BOKA_GALLRING_OMROSTNINGAR_DAGAR}
+      GALLRING_LOGG_DAGAR: ${BOKA_GALLRING_LOGG_DAGAR}
+      PUBLIC_URL: ${BOKA_PUBLIC_URL}
+      SMTP_HOST: ${BOKA_SMTP_HOST}
+      SMTP_PORT: ${BOKA_SMTP_PORT}
+      SMTP_SENDER: ${BOKA_SMTP_SENDER}
+      SMTP_SENDER_NAME: ${BOKA_SMTP_SENDER_NAME}
+      SMTP_USER: ${BOKA_SMTP_USER}
+      SMTP_PASS: ${BOKA_SMTP_PASS}
+      MS_TENANT_ID: ${BOKA_MS_TENANT_ID}
+      MS_CLIENT_ID: ${BOKA_MS_CLIENT_ID}
+      MS_CLIENT_SECRET: ${BOKA_MS_CLIENT_SECRET}
+    command: sh -c "npm install --omit=dev && node server.js"
+    restart: always
+    depends_on:
+      - boka-tid-postgres

@@ -1,0 +1,1767 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boka tid — administration</title>
+<link rel="stylesheet" href="css/style.css" id="stil">
+</head>
+<body>
+<a class="hoppa-till" href="#innehall">Hoppa till innehållet</a>
+<header class="topp">
+  <div class="omslag omslag--bred topp__rad">
+    <a class="topp__namn" id="hem" href="#">Boka tid — administration</a>
+    <span class="idag" id="idag"></span>
+  </div>
+</header>
+
+<main id="innehall">
+  <div class="omslag omslag--bred">
+    <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
+    <!-- Inloggning -->
+    <section id="inloggning" class="kort" hidden style="max-width:28rem">
+      <h1 style="margin-top:0">Logga in</h1>
+
+      <p id="msInloggning" hidden>
+        <a class="knapp" id="msInloggningLank" href="#">Logga in med Microsoft</a>
+      </p>
+      <p class="hjalptext" id="msInloggningHjalp" hidden>
+        Arbetar du på Sambruk räcker det här — kontot skapas och kalendern kopplas
+        i samma steg. Inget lösenord behövs.
+      </p>
+      <p class="meta" id="msEller" hidden style="margin:1.25rem 0 0.25rem">
+        Eller logga in med lösenord:
+      </p>
+
+      <form id="loggaInForm">
+        <label for="epost">E-postadress</label>
+        <input id="epost" type="email" autocomplete="username" required>
+        <label for="losenord">Lösenord</label>
+        <input id="losenord" type="password" autocomplete="current-password" required>
+        <p class="rad rad--knappar"><button type="submit">Logga in</button></p>
+      </form>
+    </section>
+
+    <!-- Administration -->
+    <section id="panel" hidden>
+      <h1 style="margin-bottom:0.25rem">Administration</h1>
+      <p class="meta">
+        Inloggad som <span id="anvandare"></span> ·
+        <a id="publikLank" href="#">Din publika bokningssida</a> ·
+        <button type="button" class="knapp--enkel" id="loggaUt">Logga ut</button>
+      </p>
+
+      <div class="flikar" role="tablist" aria-label="Delar av administrationen">
+        <button class="flik" role="tab" id="flik-bokningar" aria-selected="true" aria-controls="del-bokningar">Bokningar</button>
+        <button class="flik" role="tab" id="flik-omrostningar" aria-selected="false" aria-controls="del-omrostningar">Omröstningar</button>
+        <button class="flik" role="tab" id="flik-typer" aria-selected="false" aria-controls="del-typer">Mötestyper</button>
+        <button class="flik" role="tab" id="flik-schema" aria-selected="false" aria-controls="del-schema">Veckoschema</button>
+        <button class="flik" role="tab" id="flik-undantag" aria-selected="false" aria-controls="del-undantag">Undantag</button>
+        <button class="flik" role="tab" id="flik-m365" aria-selected="false" aria-controls="del-m365">Microsoft 365</button>
+        <button class="flik" role="tab" id="flik-konto" aria-selected="false" aria-controls="del-konto">Konto</button>
+        <button class="flik" role="tab" id="flik-anvandare" aria-selected="false" aria-controls="del-anvandare" hidden>Användare</button>
+        <button class="flik" role="tab" id="flik-organisation" aria-selected="false" aria-controls="del-organisation" hidden>Organisation</button>
+      </div>
+
+      <div id="del-bokningar" role="tabpanel" aria-labelledby="flik-bokningar" tabindex="0">
+        <h2>Kommande bokningar</h2>
+        <div class="tabellomslag"><table id="bokningarTabell">
+          <thead><tr><th>När</th><th>Möte</th><th>Bokare</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <p class="rad rad--knappar">
+          <button type="button" class="knapp--enkel" id="visaTidigare">Visa tidigare bokningar</button>
+        </p>
+      </div>
+
+
+      <div id="del-omrostningar" role="tabpanel" aria-labelledby="flik-omrostningar" tabindex="0" hidden>
+        <h2>Omröstningar om mötestid</h2>
+        <p class="meta">Föreslå flera tider, låt deltagarna svara och besluta sedan en tid.
+           Förslagen reserveras preliminärt i din kalender och släpps när du beslutat.</p>
+
+        <div id="omrostningarLista"></div>
+
+        <details style="margin:0 0 1rem">
+          <summary style="cursor:pointer">Rensa gamla omröstningar</summary>
+          <p class="meta" style="margin-top:0.75rem">
+            Omröstningar sparar namn och e-postadresser till externa deltagare. Rensa dem när de
+            inte behövs längre. Bara beslutade och avbrutna omröstningar rensas — öppna lämnas orörda,
+            och redan bokade möten ligger kvar i kalendern.
+          </p>
+          <p class="rad">
+            <span style="flex:0 1 12rem"><label for="oRensaDagar">Äldre än (dagar)</label>
+              <input id="oRensaDagar" type="number" min="0" max="3650" value="90"></span>
+            <span style="flex:0 0 auto"><button type="button" class="knapp--fara" id="oRensa">Rensa nu</button></span>
+          </p>
+        </details>
+
+        <div id="omrostningDetalj" class="kort" hidden aria-live="polite"></div>
+
+        <h3 id="nyOmrostningRubrik">Ny omröstning</h3>
+        <form id="omrostningForm" class="kort">
+          <div class="rad">
+            <span><label for="oTitel">Rubrik</label><input id="oTitel" required></span>
+            <span><label for="oLangd">Längd (min)</label>
+              <input id="oLangd" type="number" min="5" max="480" value="60" required></span>
+            <span><label for="oSista">Sista svarsdag <span class="hjalptext">(frivilligt)</span></label>
+              <input id="oSista" type="date"></span>
+          </div>
+
+          <label for="oBeskrivning">Beskrivning <span class="hjalptext">(visas för deltagarna)</span></label>
+          <textarea id="oBeskrivning" style="min-height:4rem"></textarea>
+
+          <div class="rad">
+            <span><label for="oPlatstyp">Plats</label>
+              <select id="oPlatstyp">
+                <option value="teams">Teams-möte</option>
+                <option value="phone">Telefon</option>
+                <option value="physical">Fysisk plats</option>
+                <option value="other">Annat</option>
+              </select></span>
+            <span><label for="oPlatstext" id="oPlatstextEtikett">Platsuppgift</label>
+              <input id="oPlatstext">
+              <span class="hjalptext" id="oPlatstextHjalp"></span></span>
+          </div>
+
+          <label for="oDeltagare">Deltagare <span class="hjalptext">(en per rad: Namn &lt;adress@exempel.se&gt;)</span></label>
+          <textarea id="oDeltagare" style="min-height:5rem"
+            placeholder="Anna Andersson &lt;anna.andersson@kommun.se&gt;&#10;Bo Bengtsson &lt;bo@annankommun.se&gt;"></textarea>
+
+          <fieldset>
+            <legend>Tider att föreslå</legend>
+            <p class="meta" style="margin-top:0">Bara dina lediga tider visas — upptagen tid i
+               kalendern och redan reserverade tider kan inte föreslås.</p>
+            <div class="rad">
+              <span><label for="oFran">Från datum</label><input id="oFran" type="date"></span>
+              <span><label for="oTill">Till datum</label><input id="oTill" type="date"></span>
+              <span style="flex:0 0 auto"><button type="button" class="knapp--enkel" id="oHamtaTider">Visa lediga tider</button></span>
+            </div>
+            <p class="meta" id="oValda">Inga tider valda.</p>
+            <div id="oTider"></div>
+          </fieldset>
+
+          <p><label><input type="checkbox" id="oHold" checked> Reservera de föreslagna tiderna preliminärt i min kalender</label></p>
+          <p><label><input type="checkbox" id="oHideNames"> Visa inte deltagarnas svar för varandra</label></p>
+
+          <p class="rad rad--knappar">
+            <button type="submit" id="oSkapa">Skapa omröstning och skicka inbjudningar</button>
+          </p>
+        </form>
+      </div>
+
+      <div id="del-typer" role="tabpanel" aria-labelledby="flik-typer" tabindex="0" hidden>
+        <h2>Mötestyper</h2>
+        <div id="typerLista"></div>
+        <h3 id="formularRubrik">Ny mötestyp</h3>
+        <form id="typForm" class="kort">
+          <input type="hidden" id="typId">
+          <div class="rad">
+            <span><label for="titel">Rubrik</label><input id="titel" required></span>
+            <span><label for="slug">Namn i bokningslänken <span class="hjalptext">(små bokstäver, siffror, bindestreck — t.ex. <code>samtal</code>)</span></label>
+              <input id="slug" required aria-describedby="slugForhandsvisning"></span>
+          </div>
+          <p class="hjalptext" id="slugForhandsvisning" aria-live="polite" style="margin:0.35rem 0 0"></p>
+
+          <label for="beskrivning">Beskrivning</label>
+          <textarea id="beskrivning"></textarea>
+          <div class="rad">
+            <span><label for="langd">Längd (min)</label><input id="langd" type="number" min="5" max="480" value="30" required></span>
+            <span><label for="steg">Tidsintervall (min)</label><input id="steg" type="number" min="5" max="240" value="30"></span>
+            <span><label for="bufferefore">Buffert före (min)</label><input id="bufferefore" type="number" min="0" max="240" value="0"></span>
+            <span><label for="bufferefter">Buffert efter (min)</label><input id="bufferefter" type="number" min="0" max="240" value="15"></span>
+          </div>
+          <div class="rad">
+            <span><label for="framforhallning">Framförhållning (min)</label><input id="framforhallning" type="number" min="0" value="240"></span>
+            <span><label for="dagarframat">Bokningsbart antal dagar framåt</label><input id="dagarframat" type="number" min="1" max="365" value="60"></span>
+            <span><label for="maxperdag">Max möten per dag <span class="hjalptext">(tomt = ingen gräns)</span></label><input id="maxperdag" type="number" min="1"></span>
+          </div>
+          <div class="rad">
+            <span><label for="platstyp">Plats</label>
+              <select id="platstyp">
+                <option value="teams">Teams-möte</option>
+                <option value="phone">Telefon</option>
+                <option value="physical">Fysisk plats</option>
+                <option value="other">Annat</option>
+              </select></span>
+            <span><label for="platstext" id="platstextEtikett">Platsuppgift</label>
+              <input id="platstext" aria-describedby="platstextHjalp">
+              <span class="hjalptext" id="platstextHjalp"></span></span>
+          </div>
+          <fieldset id="vardarFalt">
+            <legend>Fler värdar på den här tjänsten</legend>
+            <p class="meta" style="margin-top:0">Väljer du fler personer visas bara tider då
+               <strong>samtliga</strong> är lediga, enligt både veckoschema och kalender. Alla
+               läggs till som deltagare i mötet.</p>
+            <div id="vardarLista"></div>
+          </fieldset>
+
+          <label for="fragor">Frågor till bokaren <span class="hjalptext">(en per rad, avsluta med * för obligatorisk)</span></label>
+          <textarea id="fragor" style="min-height:4rem"></textarea>
+          <p><label><input type="checkbox" id="aktiv" checked> Aktiv och bokningsbar</label></p>
+          <p class="rad rad--knappar">
+            <button type="submit" id="sparaTyp">Spara mötestyp</button>
+            <button type="button" class="knapp--enkel" id="avbrytTyp" hidden>Avbryt redigering</button>
+          </p>
+        </form>
+      </div>
+
+      <div id="del-schema" role="tabpanel" aria-labelledby="flik-schema" tabindex="0" hidden>
+        <h2>Veckoschema</h2>
+        <p class="meta">Tider anges i svensk tid. Lämna tomt för en dag du inte tar möten.</p>
+        <form id="schemaForm">
+          <div id="schemaRader"></div>
+          <p class="rad rad--knappar"><button type="submit">Spara veckoschema</button></p>
+        </form>
+      </div>
+
+      <div id="del-undantag" role="tabpanel" aria-labelledby="flik-undantag" tabindex="0" hidden>
+        <h2>Undantag för enskilda datum</h2>
+        <form id="undantagForm" class="kort">
+          <div class="rad">
+            <span><label for="undantagDatum">Datum</label><input id="undantagDatum" type="date" required></span>
+            <span><label for="undantagTyp">Typ</label>
+              <select id="undantagTyp">
+                <option value="stangt">Stängt hela dagen</option>
+                <option value="tider">Andra tider än vanligt</option>
+              </select></span>
+            <span><label for="undantagFran">Från</label><input id="undantagFran" type="time" value="09:00"></span>
+            <span><label for="undantagTill">Till</label><input id="undantagTill" type="time" value="12:00"></span>
+          </div>
+          <label for="undantagNot">Anteckning</label>
+          <input id="undantagNot" placeholder="t.ex. semester">
+          <p class="rad rad--knappar"><button type="submit">Spara undantag</button></p>
+        </form>
+        <div class="tabellomslag"><table id="undantagTabell">
+          <thead><tr><th>Datum</th><th>Gäller</th><th>Anteckning</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div id="del-m365" role="tabpanel" aria-labelledby="flik-m365" tabindex="0" hidden>
+        <h2>Microsoft 365</h2>
+        <div id="m365status"></div>
+        <p class="meta">
+          Kopplingen läser ledig/upptaget ur din kalender och skriver in bokade möten där.
+          Endast din egen kalender berörs. Mötesrubriker hämtas inte.
+        </p>
+      </div>
+
+      <div id="del-konto" role="tabpanel" aria-labelledby="flik-konto" tabindex="0" hidden>
+        <h2>Gallring av personuppgifter</h2>
+        <div id="gallringStatus"></div>
+        <p class="rad rad--knappar">
+          <button type="button" class="knapp--enkel" id="gallraNu">Gallra nu</button>
+        </p>
+
+        <h2>Byt lösenord</h2>
+        <form id="losenordForm" style="max-width:28rem">
+          <label for="nuvarande">Nuvarande lösenord</label>
+          <input id="nuvarande" type="password" autocomplete="current-password">
+          <label for="nytt">Nytt lösenord <span class="hjalptext">(minst 12 tecken)</span></label>
+          <input id="nytt" type="password" autocomplete="new-password" required minlength="12">
+          <p class="rad rad--knappar"><button type="submit">Byt lösenord</button></p>
+        </form>
+      </div>
+
+      <div id="del-anvandare" role="tabpanel" aria-labelledby="flik-anvandare" tabindex="0" hidden>
+        <h2>Användare</h2>
+        <p class="meta">Alla användare kan skapa egna bokningstjänster och bjuda in varandra som värdar.
+           Superadmin lägger upp konton, sätter roller och stänger av.</p>
+        <div class="tabellomslag"><table id="anvandarTabell">
+          <thead><tr><th>Namn</th><th>E-post</th><th>Kortnamn</th><th>Roll</th><th>Kalender</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+
+        <h3 id="anvandarRubrik">Ny användare</h3>
+        <form id="anvandarForm" class="kort">
+          <input type="hidden" id="aId">
+          <div class="rad">
+            <span><label for="aNamn">Namn</label><input id="aNamn" required></span>
+            <span><label for="aEpost">E-postadress</label><input id="aEpost" type="email" required></span>
+          </div>
+          <div class="rad">
+            <span><label for="aTitel">Titel <span class="hjalptext">(frivilligt)</span></label><input id="aTitel"></span>
+            <span><label for="aSlug">Kortnamn i länken <span class="hjalptext">(tomt = ur adressen)</span></label><input id="aSlug"></span>
+            <span><label for="aRoll">Roll</label>
+              <select id="aRoll"><option value="host">Användare</option><option value="admin">Superadmin</option></select></span>
+          </div>
+          <p id="aStatusRad" hidden><label><input type="checkbox" id="aAktiv" checked> Aktiv — kan logga in och bokas</label></p>
+          <p class="meta" id="aHjalp">Lösenord behövs inte om personen loggar in med Microsoft — det är den
+             enklaste vägen och kopplar kalendern i samma steg.</p>
+          <p class="rad rad--knappar">
+            <button type="submit" id="aSpara">Lägg upp användare</button>
+            <button type="button" class="knapp--enkel" id="aAvbryt" hidden>Avbryt redigering</button>
+          </p>
+        </form>
+      </div>
+
+      <div id="del-organisation" role="tabpanel" aria-labelledby="flik-organisation" tabindex="0" hidden>
+        <h2>Organisation</h2>
+        <p class="meta">Visas på alla publika sidor: bokningssidor, avbokning och omröstningar.</p>
+
+        <form id="orgForm" class="kort">
+          <div class="rad">
+            <span><label for="oOrgNamn">Namn</label><input id="oOrgNamn" placeholder="t.ex. Sambruk"></span>
+            <span><label for="oOrgWebb">Webbadress</label>
+              <input id="oOrgWebb" type="url" placeholder="https://sambruk.se"></span>
+          </div>
+          <div class="rad">
+            <span><label for="oOrgFarg">Färgtema</label>
+              <input id="oOrgFarg" type="color" value="#58a618" style="height:3rem;padding:0.2rem"></span>
+            <span><label for="oOrgFargText">Färgkod</label>
+              <input id="oOrgFargText" placeholder="#58A618" spellcheck="false"></span>
+          </div>
+          <div id="kontrastBesked" aria-live="polite"></div>
+          <p class="rad rad--knappar"><button type="submit">Spara</button></p>
+        </form>
+
+        <h3>Logotyp</h3>
+        <div class="kort">
+          <p id="loggaNu"></p>
+          <p><label for="oLogga">Ladda upp <span class="hjalptext">PNG, JPEG eller WebP, högst 1500 kB</span></label>
+            <input id="oLogga" type="file" accept="image/png,image/jpeg,image/webp"></p>
+          <p class="rad rad--knappar">
+            <button type="button" class="knapp--fara" id="taBortLogga" hidden>Ta bort logotypen</button>
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer><div class="omslag omslag--bred">Sambruk — öppen källkod</div></footer>
+
+<script src="js/gemensamt.js"></script>
+<script>
+(async () => {
+  const bas = basvag(1);
+  document.getElementById('stil').href = `${bas}/css/style.css`;
+  document.getElementById('hem').href = `${bas}/admin`;
+  visaIdag(document.getElementById('idag'));
+
+  const meddelande = document.getElementById('notis');
+  const inloggning = document.getElementById('inloggning');
+  const panel = document.getElementById('panel');
+  let jag = null;
+
+  /* ---- flikar ---- */
+  const flikar = [...document.querySelectorAll('[role="tab"]')];
+  flikar.forEach((flik, i) => {
+    flik.addEventListener('click', () => valjFlik(i));
+    flik.addEventListener('keydown', (ev) => {
+      const steg = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+      if (!steg) return;
+      ev.preventDefault();
+      // Hoppa över flikar som är dolda, t.ex. superadmin-flikarna för en vanlig
+      // användare — annars flyttas fokus till något som inte syns.
+      let ny = i;
+      for (let n = 0; n < flikar.length; n++) {
+        ny = (ny + steg + flikar.length) % flikar.length;
+        if (!flikar[ny].hidden) break;
+      }
+      valjFlik(ny);
+      flikar[ny].focus();
+    });
+  });
+  const valjFlikId = (id) => valjFlik(flikar.findIndex((f) => f.id === id));
+  function valjFlik(index) {
+    flikar.forEach((flik, i) => {
+      flik.setAttribute('aria-selected', String(i === index));
+      document.getElementById(flik.getAttribute('aria-controls')).hidden = i !== index;
+    });
+  }
+
+  /* ---- inloggning ---- */
+  document.getElementById('loggaInForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try {
+      await skicka(`${bas}/api/login`, {
+        email: document.getElementById('epost').value,
+        password: document.getElementById('losenord').value,
+      });
+      rensaNotis(meddelande);
+      await start();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  document.getElementById('loggaUt').addEventListener('click', async () => {
+    await skicka(`${bas}/api/logout`, {});
+    location.reload();
+  });
+
+  /* ---- bokningar ---- */
+  async function laddaBokningar(scope = 'upcoming') {
+    const { bookings } = await hamta(`${bas}/api/admin/bookings?scope=${scope}`);
+    const tbody = document.querySelector('#bokningarTabell tbody');
+    tbody.textContent = '';
+    if (!bookings.length) {
+      const tr = tbody.insertRow();
+      const td = tr.insertCell();
+      td.colSpan = 5;
+      td.textContent = scope === 'past' ? 'Inga tidigare bokningar.' : 'Inga kommande bokningar.';
+      return;
+    }
+    for (const b of bookings) {
+      const tr = tbody.insertRow();
+      tr.insertCell().textContent = b.when;
+      tr.insertCell().textContent = b.title;
+      const bokare = tr.insertCell();
+      bokare.textContent = `${b.invitee_name} (${b.invitee_email})`;
+      if (b.invitee_org) bokare.append(document.createElement('br'), document.createTextNode(b.invitee_org));
+      const svar = Object.entries(b.answers || {});
+      if (svar.length) {
+        const dl = document.createElement('div');
+        dl.className = 'meta';
+        dl.textContent = svar.map(([k, v]) => `${k}: ${v}`).join(' · ');
+        bokare.append(dl);
+      }
+      tr.insertCell().textContent = b.status === 'cancelled' ? 'Avbokad' : 'Bekräftad';
+      const atgard = tr.insertCell();
+      if (b.status !== 'cancelled') {
+        const knapp = document.createElement('button');
+        knapp.className = 'knapp--fara';
+        knapp.textContent = 'Avboka';
+        knapp.addEventListener('click', async () => {
+          const orsak = prompt('Orsak som skickas till bokaren (frivilligt):') ?? '';
+          knapp.disabled = true;
+          try {
+            await skicka(`${bas}/api/admin/bookings/${b.id}/cancel`, { reason: orsak });
+            notis(meddelande, 'Bokningen är avbokad och bokaren har fått besked.', 'ok');
+            laddaBokningar(scope);
+          } catch (err) {
+            notis(meddelande, err.message, 'fel');
+            knapp.disabled = false;
+          }
+        });
+        atgard.append(knapp);
+      }
+    }
+  }
+  document.getElementById('visaTidigare').addEventListener('click', (ev) => {
+    const visarTidigare = ev.target.dataset.scope === 'past';
+    const nyttScope = visarTidigare ? 'upcoming' : 'past';
+    ev.target.dataset.scope = nyttScope;
+    ev.target.textContent = nyttScope === 'past' ? 'Visa kommande bokningar' : 'Visa tidigare bokningar';
+    document.querySelector('#del-bokningar h2').textContent =
+      nyttScope === 'past' ? 'Tidigare bokningar' : 'Kommande bokningar';
+    laddaBokningar(nyttScope);
+  });
+
+  /* ---- mötestyper ---- */
+  function fragorTillText(fragor) {
+    return (fragor || []).map((f) => f.key + (f.required ? ' *' : '')).join('\n');
+  }
+  function textTillFragor(text) {
+    return String(text || '')
+      .split('\n')
+      .map((rad) => rad.trim())
+      .filter(Boolean)
+      .map((rad) => {
+        const required = rad.endsWith('*');
+        return { key: rad.replace(/\*$/, '').trim(), type: 'textarea', required };
+      });
+  }
+
+  async function laddaTyper() {
+    const { eventTypes } = await hamta(`${bas}/api/admin/event-types`);
+    const ut = document.getElementById('typerLista');
+    ut.textContent = '';
+    if (!eventTypes.length) {
+      const p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = 'Inga mötestyper ännu. Lägg upp en nedan.';
+      ut.append(p);
+      return;
+    }
+    for (const t of eventTypes) {
+      const kort = document.createElement('div');
+      kort.className = 'kort';
+      const rubrik = document.createElement('h3');
+      rubrik.style.marginTop = '0';
+      rubrik.textContent = t.title + (t.active ? '' : ' (inaktiv)');
+      const meta = document.createElement('p');
+      meta.className = 'meta';
+      const vardar = Array.isArray(t.medvardar) && t.medvardar.length
+        ? ` · värdar: du + ${t.medvardar.map((m) => m.name).join(', ')}`
+        : '';
+      meta.textContent = `${t.duration_min} min · ${t.location_type} · buffert ${t.buffer_before}/${t.buffer_after} min · ${t.max_days_ahead} dagar framåt${vardar}`;
+      const lank = document.createElement('p');
+      const a = document.createElement('a');
+      a.href = `${bas}/${jag.user.slug}/${t.slug}`;
+      a.textContent = `${location.origin}${bas}/${jag.user.slug}/${t.slug}`;
+      lank.append(a);
+      const knappar = document.createElement('p');
+      knappar.className = 'rad rad--knappar';
+      const redigera = document.createElement('button');
+      redigera.className = 'knapp--enkel';
+      redigera.textContent = 'Redigera';
+      redigera.addEventListener('click', () => fyllFormular(t));
+      knappar.append(redigera);
+      if (t.active) {
+        const avaktivera = document.createElement('button');
+        avaktivera.className = 'knapp--fara';
+        avaktivera.textContent = 'Avaktivera';
+        avaktivera.addEventListener('click', async () => {
+          if (!confirm(`Avaktivera "${t.title}"? Befintliga bokningar påverkas inte.`)) return;
+          await skicka(`${bas}/api/admin/event-types/${t.id}`, undefined, 'DELETE');
+          laddaTyper();
+        });
+        knappar.append(avaktivera);
+      }
+      kort.append(rubrik, meta, lank, knappar);
+      ut.append(kort);
+    }
+  }
+
+  function fyllFormular(t) {
+    document.getElementById('typId').value = t ? t.id : '';
+    document.getElementById('titel').value = t ? t.title : '';
+    document.getElementById('slug').value = t ? t.slug : '';
+    document.getElementById('beskrivning').value = t ? t.description || '' : '';
+    document.getElementById('langd').value = t ? t.duration_min : 30;
+    document.getElementById('steg').value = t ? t.slot_step_min : 30;
+    document.getElementById('bufferefore').value = t ? t.buffer_before : 0;
+    document.getElementById('bufferefter').value = t ? t.buffer_after : 15;
+    document.getElementById('framforhallning').value = t ? t.min_notice_min : 240;
+    document.getElementById('dagarframat').value = t ? t.max_days_ahead : 60;
+    document.getElementById('maxperdag').value = t && t.max_per_day ? t.max_per_day : '';
+    document.getElementById('platstyp').value = t ? t.location_type : 'teams';
+    document.getElementById('platstext').value = t ? t.location_text || '' : '';
+    document.getElementById('fragor').value = t ? fragorTillText(t.questions) : '';
+    document.getElementById('aktiv').checked = t ? t.active : true;
+    document.getElementById('formularRubrik').textContent = t ? `Redigera: ${t.title}` : 'Ny mötestyp';
+    document.getElementById('avbrytTyp').hidden = !t;
+    byggVardval(t && Array.isArray(t.medvardar) ? t.medvardar.map((m) => m.id) : []);
+    document.getElementById('slug').dataset.rord = t ? '1' : '';
+    uppdateraPlatsfalt();
+    uppdateraSlugForhandsvisning();
+    platsHjalp();
+    visaValda();
+    document.getElementById('titel').focus();
+  }
+
+  /* Visar vilken adress mötestypen får, så att fältet inte förväxlas med en möteslänk. */
+  function uppdateraSlugForhandsvisning() {
+    const ren = document.getElementById('slug').value
+      .toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const ut = document.getElementById('slugForhandsvisning');
+    if (!jag) return;
+    ut.textContent = ren
+      ? `Bokningssidan blir: ${location.origin}${bas}/${jag.user.slug}/${ren}`
+      : 'Bokningssidans adress visas här när du fyllt i fältet.';
+  }
+  document.getElementById('slug').addEventListener('input', uppdateraSlugForhandsvisning);
+
+  /* Föreslå adressnamn utifrån rubriken, men bara för en ny mötestyp. */
+  document.getElementById('titel').addEventListener('input', (ev) => {
+    if (document.getElementById('typId').value) return;
+    if (document.getElementById('slug').dataset.rord === '1') return;
+    document.getElementById('slug').value = ev.target.value
+      .toLowerCase()
+      .replace(/[åä]/g, 'a').replace(/ö/g, 'o').replace(/é/g, 'e')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      .slice(0, 40);
+    uppdateraSlugForhandsvisning();
+  });
+  document.getElementById('slug').addEventListener('input', (ev) => {
+    ev.target.dataset.rord = '1';
+  });
+
+  /* Platsfältet betyder olika saker beroende på mötesform. */
+  function uppdateraPlatsfalt() {
+    const typ = document.getElementById('platstyp').value;
+    const etikett = document.getElementById('platstextEtikett');
+    const hjalp = document.getElementById('platstextHjalp');
+    const falt = document.getElementById('platstext');
+    if (typ === 'teams') {
+      etikett.textContent = 'Platsuppgift';
+      hjalp.textContent = 'Behövs inte — Teams-länken skapas automatiskt för varje bokning när din kalender är kopplad.';
+      falt.disabled = true;
+      falt.value = '';
+    } else if (typ === 'phone') {
+      etikett.textContent = 'Telefonnummer';
+      hjalp.textContent = 'Lämna tomt om du ringer upp bokaren.';
+      falt.disabled = false;
+    } else if (typ === 'physical') {
+      etikett.textContent = 'Adress';
+      hjalp.textContent = 'Visas för bokaren och följer med i kalenderinbjudan.';
+      falt.disabled = false;
+    } else {
+      etikett.textContent = 'Platsuppgift';
+      hjalp.textContent = 'Fri text som visas för bokaren.';
+      falt.disabled = false;
+    }
+  }
+  document.getElementById('platstyp').addEventListener('change', uppdateraPlatsfalt);
+
+  document.getElementById('avbrytTyp').addEventListener('click', () => fyllFormular(null));
+
+  document.getElementById('typForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const id = document.getElementById('typId').value;
+    const kropp = {
+      title: document.getElementById('titel').value,
+      slug: document.getElementById('slug').value,
+      description: document.getElementById('beskrivning').value,
+      duration_min: Number(document.getElementById('langd').value),
+      slot_step_min: Number(document.getElementById('steg').value),
+      buffer_before: Number(document.getElementById('bufferefore').value),
+      buffer_after: Number(document.getElementById('bufferefter').value),
+      min_notice_min: Number(document.getElementById('framforhallning').value),
+      max_days_ahead: Number(document.getElementById('dagarframat').value),
+      max_per_day: document.getElementById('maxperdag').value ? Number(document.getElementById('maxperdag').value) : null,
+      location_type: document.getElementById('platstyp').value,
+      location_text: document.getElementById('platstext').disabled ? '' : document.getElementById('platstext').value,
+      questions: textTillFragor(document.getElementById('fragor').value),
+      hosts: valdaVardar(),
+      active: document.getElementById('aktiv').checked,
+    };
+    try {
+      if (id) await skicka(`${bas}/api/admin/event-types/${id}`, kropp, 'PUT');
+      else await skicka(`${bas}/api/admin/event-types`, kropp);
+      notis(meddelande, 'Mötestypen är sparad.', 'ok');
+      fyllFormular(null);
+      laddaTyper();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  /* ---- veckoschema ---- */
+  function byggSchema(rules) {
+    const ut = document.getElementById('schemaRader');
+    ut.textContent = '';
+    VECKODAGAR.forEach((namn, i) => {
+      const weekday = i + 1;
+      const regel = (rules || []).find((r) => r.weekday === weekday);
+      const rad = document.createElement('div');
+      rad.className = 'rad';
+      rad.style.marginBottom = '0.5rem';
+
+      const dag = document.createElement('span');
+      dag.style.flex = '0 0 7rem';
+      dag.style.fontWeight = '600';
+      dag.style.textTransform = 'capitalize';
+      dag.textContent = namn;
+
+      const franEtikett = document.createElement('label');
+      franEtikett.setAttribute('for', `fran${weekday}`);
+      franEtikett.textContent = 'Från';
+      const fran = document.createElement('input');
+      fran.type = 'time';
+      fran.id = `fran${weekday}`;
+      fran.dataset.weekday = String(weekday);
+      fran.dataset.roll = 'fran';
+      fran.value = regel ? minuterTillKlocka(regel.start_min) : '';
+
+      const tillEtikett = document.createElement('label');
+      tillEtikett.setAttribute('for', `till${weekday}`);
+      tillEtikett.textContent = 'Till';
+      const till = document.createElement('input');
+      till.type = 'time';
+      till.id = `till${weekday}`;
+      till.dataset.weekday = String(weekday);
+      till.dataset.roll = 'till';
+      till.value = regel ? minuterTillKlocka(regel.end_min) : '';
+
+      const franOmslag = document.createElement('span');
+      franOmslag.append(franEtikett, fran);
+      const tillOmslag = document.createElement('span');
+      tillOmslag.append(tillEtikett, till);
+
+      rad.append(dag, franOmslag, tillOmslag);
+      ut.append(rad);
+    });
+  }
+
+  document.getElementById('schemaForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const rules = [];
+    for (let weekday = 1; weekday <= 7; weekday++) {
+      const fran = document.querySelector(`[data-weekday="${weekday}"][data-roll="fran"]`).value;
+      const till = document.querySelector(`[data-weekday="${weekday}"][data-roll="till"]`).value;
+      if (!fran && !till) continue;
+      const startMin = klockaTillMinuter(fran);
+      const endMin = klockaTillMinuter(till);
+      if (startMin == null || endMin == null || endMin <= startMin) {
+        return notis(meddelande, `Kontrollera tiderna för ${VECKODAGAR[weekday - 1]}.`, 'fel');
+      }
+      rules.push({ weekday, start_min: startMin, end_min: endMin });
+    }
+    try {
+      await skicka(`${bas}/api/admin/availability`, { rules }, 'PUT');
+      notis(meddelande, 'Veckoschemat är sparat.', 'ok');
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  /* ---- undantag ---- */
+  async function laddaUndantag() {
+    const { rules, overrides } = await hamta(`${bas}/api/admin/availability`);
+    byggSchema(rules);
+    const tbody = document.querySelector('#undantagTabell tbody');
+    tbody.textContent = '';
+    if (!overrides.length) {
+      const tr = tbody.insertRow();
+      const td = tr.insertCell();
+      td.colSpan = 4;
+      td.textContent = 'Inga undantag framåt i tiden.';
+      return;
+    }
+    for (const o of overrides) {
+      const tr = tbody.insertRow();
+      tr.insertCell().textContent = o.on_date;
+      tr.insertCell().textContent = o.unavailable
+        ? 'Stängt hela dagen'
+        : `${minuterTillKlocka(o.start_min)}–${minuterTillKlocka(o.end_min)}`;
+      tr.insertCell().textContent = o.note || '';
+      const knapp = document.createElement('button');
+      knapp.className = 'knapp--enkel';
+      knapp.textContent = 'Ta bort';
+      knapp.addEventListener('click', async () => {
+        await skicka(`${bas}/api/admin/overrides/${o.on_date}`, undefined, 'DELETE');
+        laddaUndantag();
+      });
+      tr.insertCell().append(knapp);
+    }
+  }
+
+  document.getElementById('undantagTyp').addEventListener('change', (ev) => {
+    const tider = ev.target.value === 'tider';
+    document.getElementById('undantagFran').disabled = !tider;
+    document.getElementById('undantagTill').disabled = !tider;
+  });
+  document.getElementById('undantagFran').disabled = true;
+  document.getElementById('undantagTill').disabled = true;
+
+  document.getElementById('undantagForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const stangt = document.getElementById('undantagTyp').value === 'stangt';
+    const kropp = {
+      on_date: document.getElementById('undantagDatum').value,
+      unavailable: stangt,
+      note: document.getElementById('undantagNot').value,
+    };
+    if (!stangt) {
+      kropp.start_min = klockaTillMinuter(document.getElementById('undantagFran').value);
+      kropp.end_min = klockaTillMinuter(document.getElementById('undantagTill').value);
+    }
+    try {
+      await skicka(`${bas}/api/admin/overrides`, kropp);
+      notis(meddelande, 'Undantaget är sparat.', 'ok');
+      laddaUndantag();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  /* ---- Microsoft 365 ---- */
+  function visaM365() {
+    const ut = document.getElementById('m365status');
+    ut.textContent = '';
+    const m = jag.m365;
+    const status = document.createElement('p');
+
+    if (!m.configured) {
+      status.className = 'notis notis--info';
+      status.textContent =
+        'Kopplingen är inte konfigurerad på servern ännu. En appregistrering i Entra ' +
+        'behövs först — stegen står i docs/M365-KOPPLING.md i projektet.';
+      ut.append(status);
+      return;
+    }
+    if (m.connected) {
+      status.className = 'notis notis--ok';
+      status.textContent = `Kalendern är kopplad till ${m.upn}.`;
+      ut.append(status);
+      const koppla = document.createElement('p');
+      koppla.className = 'rad rad--knappar';
+      const bort = document.createElement('button');
+      bort.className = 'knapp--fara';
+      bort.textContent = 'Koppla bort kalendern';
+      bort.addEventListener('click', async () => {
+        if (!confirm('Koppla bort kalendern? Nya bokningar skrivs då inte in i Outlook.')) return;
+        await skicka(`${bas}/api/admin/ms/disconnect`, {});
+        await start();
+        valjFlikId('flik-m365');
+      });
+      koppla.append(bort);
+      ut.append(koppla);
+    } else {
+      status.className = 'notis notis--info';
+      status.textContent = 'Kalendern är inte kopplad. Utan koppling visas bara tider ur veckoschemat, och möten skrivs inte in i Outlook.';
+      ut.append(status);
+      const p = document.createElement('p');
+      const lank = document.createElement('a');
+      lank.className = 'knapp';
+      lank.href = `${bas}/auth/ms/start`;
+      lank.textContent = 'Koppla min Microsoft 365-kalender';
+      p.append(lank);
+      ut.append(p);
+    }
+    if (m.utanBrevlada) {
+      const varning = document.createElement('p');
+      varning.className = 'notis notis--fel';
+      varning.textContent =
+        `Senaste försöket kopplades inte: kontot ${m.utanBrevlada.konto} har ingen brevlåda i ` +
+        'Microsoft 365. Det är oftast ett administratörskonto utan Exchange-licens. ' +
+        'Klicka Koppla igen och välj din vanliga arbetsadress i kontovalet.';
+      ut.append(varning);
+    }
+    if (m.lastError) {
+      const fel = document.createElement('p');
+      fel.className = 'notis notis--fel';
+      fel.textContent = `Senaste fel från Microsoft: ${m.lastError}`;
+      ut.append(fel);
+    }
+  }
+
+  /* ---- lösenord ---- */
+  document.getElementById('losenordForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try {
+      await skicka(`${bas}/api/admin/password`, {
+        current: document.getElementById('nuvarande').value,
+        next: document.getElementById('nytt').value,
+      }, 'PUT');
+      notis(meddelande, 'Lösenordet är bytt. Logga in igen.', 'ok');
+      setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  /* Knappen visas bara när servern har M365-uppgifterna på plats. */
+  async function visaMsInloggning() {
+    try {
+      const halsa = await hamta(`${bas}/healthz`);
+      if (halsa.m365 !== 'konfigurerad') return;
+      document.getElementById('msInloggningLank').href = `${bas}/auth/ms/login`;
+      document.getElementById('msInloggning').hidden = false;
+      document.getElementById('msInloggningHjalp').hidden = false;
+      document.getElementById('msEller').hidden = false;
+    } catch (err) {
+      /* Utan svar visas bara lösenordsinloggningen. */
+    }
+  }
+
+
+  /* ---- omröstningar ---- */
+
+  const SVARSTEXT = { ja: 'Ja', kanske: 'Om jag måste', nej: 'Nej' };
+  const STATUSTEXT = { open: 'Öppen', closed: 'Stängd', decided: 'Beslutad', cancelled: 'Avbruten' };
+  let valdaTider = new Set();
+
+  function platsHjalp() {
+    const typ = document.getElementById('oPlatstyp').value;
+    const etikett = document.getElementById('oPlatstextEtikett');
+    const hjalp = document.getElementById('oPlatstextHjalp');
+    const falt = document.getElementById('oPlatstext');
+    if (typ === 'teams') {
+      etikett.textContent = 'Platsuppgift';
+      hjalp.textContent = 'Behövs inte — Teams-länken skapas när tiden beslutas.';
+      falt.disabled = true;
+      falt.value = '';
+    } else {
+      etikett.textContent = typ === 'phone' ? 'Telefonnummer' : typ === 'physical' ? 'Adress' : 'Platsuppgift';
+      hjalp.textContent = 'Visas för deltagarna.';
+      falt.disabled = false;
+    }
+  }
+  document.getElementById('oPlatstyp').addEventListener('change', platsHjalp);
+
+  function visaValda() {
+    const el = document.getElementById('oValda');
+    el.textContent = valdaTider.size
+      ? `${valdaTider.size} tid${valdaTider.size === 1 ? '' : 'er'} valda.`
+      : 'Inga tider valda.';
+  }
+
+  document.getElementById('oLangd').addEventListener('change', () => {
+    // Lediga tider beror på längden, så valet måste göras om.
+    if (valdaTider.size) {
+      valdaTider.clear();
+      document.getElementById('oTider').textContent = '';
+      visaValda();
+      notis(meddelande, 'Längden ändrades — hämta lediga tider igen.', 'info');
+    }
+  });
+
+  document.getElementById('oHamtaTider').addEventListener('click', async () => {
+    const knapp = document.getElementById('oHamtaTider');
+    const langd = Number(document.getElementById('oLangd').value) || 60;
+    const fran = document.getElementById('oFran').value;
+    const till = document.getElementById('oTill').value;
+    knapp.disabled = true;
+    const ut = document.getElementById('oTider');
+    ut.textContent = 'Hämtar…';
+    try {
+      const fraga = new URLSearchParams({ duration: String(langd) });
+      if (fran) fraga.set('from', fran);
+      if (till) fraga.set('to', till);
+      const data = await hamta(`${bas}/api/admin/poll-slots?${fraga}`);
+      ut.textContent = '';
+      if (!data.calendarChecked) {
+        const varning = document.createElement('p');
+        varning.className = 'notis notis--info';
+        varning.textContent =
+          'Kalendern kunde inte läsas, så tiderna bygger bara på ditt veckoschema och tjänstens egna bokningar.';
+        ut.append(varning);
+      }
+      if (!data.days.length) {
+        const p = document.createElement('p');
+        p.className = 'meta';
+        p.textContent = 'Inga lediga tider i perioden. Prova ett annat datumintervall eller kortare möte.';
+        ut.append(p);
+        return;
+      }
+      for (const dag of data.days) {
+        const ruta = document.createElement('div');
+        ruta.className = 'dag';
+        ruta.style.marginBottom = '0.5rem';
+        const rubrik = document.createElement('h4');
+        rubrik.className = 'dag__rubrik';
+        rubrik.style.margin = '0 0 0.5rem';
+        rubrik.textContent = dag.label;
+        const tider = document.createElement('div');
+        tider.className = 'tider';
+        for (const tid of dag.slots) {
+          const id = `slot_${tid.start}`;
+          const omslag = document.createElement('span');
+          const kryss = document.createElement('input');
+          kryss.type = 'checkbox';
+          kryss.id = id;
+          kryss.value = tid.start;
+          kryss.checked = valdaTider.has(tid.start);
+          kryss.style.width = 'auto';
+          kryss.style.marginRight = '0.3rem';
+          kryss.addEventListener('change', () => {
+            if (kryss.checked) {
+              if (valdaTider.size >= 20) {
+                kryss.checked = false;
+                return notis(meddelande, 'Högst 20 tider kan föreslås.', 'fel');
+              }
+              valdaTider.add(tid.start);
+            } else {
+              valdaTider.delete(tid.start);
+            }
+            visaValda();
+          });
+          const etikett = document.createElement('label');
+          etikett.setAttribute('for', id);
+          etikett.textContent = tid.label;
+          etikett.style.display = 'inline';
+          etikett.style.fontWeight = '400';
+          omslag.append(kryss, etikett);
+          tider.append(omslag);
+        }
+        ruta.append(rubrik, tider);
+        ut.append(ruta);
+      }
+    } catch (err) {
+      ut.textContent = '';
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
+  });
+
+  /** "Anna Andersson <anna@x.se>" eller bara "anna@x.se" per rad. */
+  function tolkaDeltagare(text) {
+    return String(text || '')
+      .split('\n')
+      .map((rad) => rad.trim())
+      .filter(Boolean)
+      .map((rad) => {
+        const m = /^(.*?)[<\s]+([^<>\s]+@[^<>\s]+)>?$/.exec(rad);
+        if (m && m[1].trim()) return { name: m[1].trim().replace(/[,;]$/, ''), email: m[2] };
+        const bara = rad.replace(/[<>]/g, '').trim();
+        return { name: bara.split('@')[0].replace(/[._-]+/g, ' '), email: bara };
+      })
+      .filter((p) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email));
+  }
+
+  document.getElementById('omrostningForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const knapp = document.getElementById('oSkapa');
+    if (!valdaTider.size) return notis(meddelande, 'Välj minst en tid att föreslå.', 'fel');
+
+    const deltagare = tolkaDeltagare(document.getElementById('oDeltagare').value);
+    if (!deltagare.length && !confirm('Inga deltagare angivna. Skapa omröstningen ändå? Du kan dela länken själv.')) {
+      return;
+    }
+
+    knapp.disabled = true;
+    rensaNotis(meddelande);
+    try {
+      const svar = await skicka(`${bas}/api/admin/polls`, {
+        title: document.getElementById('oTitel').value,
+        description: document.getElementById('oBeskrivning').value,
+        duration_min: Number(document.getElementById('oLangd').value),
+        location_type: document.getElementById('oPlatstyp').value,
+        location_text: document.getElementById('oPlatstext').disabled ? '' : document.getElementById('oPlatstext').value,
+        deadline: document.getElementById('oSista').value || null,
+        options: [...valdaTider],
+        participants: deltagare,
+        hold_calendar: document.getElementById('oHold').checked,
+        hide_names: document.getElementById('oHideNames').checked,
+      });
+
+      const delar = [`Omröstningen är skapad. Länk: ${svar.poll.url}`];
+      if (svar.holds) {
+        delar.push(
+          svar.holds.skapade
+            ? `${svar.holds.skapade} tider reserverade i kalendern.`
+            : `Inga tider kunde reserveras i kalendern${(svar.holds.fel || []).length ? ': ' + svar.holds.fel[0] : '.'}`
+        );
+      }
+      if (svar.invitations) {
+        delar.push(`${svar.invitations.skickade} inbjudningar skickade.`);
+        if (svar.invitations.misslyckade?.length) {
+          delar.push(`Kunde inte skicka till: ${svar.invitations.misslyckade.join(', ')}.`);
+        }
+      }
+      notis(meddelande, delar.join(' '), 'ok');
+
+      document.getElementById('omrostningForm').reset();
+      valdaTider.clear();
+      document.getElementById('oTider').textContent = '';
+      visaValda();
+      platsHjalp();
+      await laddaOmrostningar();
+      await visaOmrostning(svar.poll.id);
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
+  });
+
+  async function laddaOmrostningar() {
+    const { polls } = await hamta(`${bas}/api/admin/polls`);
+    const ut = document.getElementById('omrostningarLista');
+    ut.textContent = '';
+    if (!polls.length) {
+      const p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = 'Inga omröstningar ännu.';
+      ut.append(p);
+      return;
+    }
+    const omslag = document.createElement('div');
+    omslag.className = 'tabellomslag';
+    const tabell = document.createElement('table');
+    tabell.innerHTML =
+      '<thead><tr><th>Rubrik</th><th>Status</th><th>Tider</th><th>Svar</th><th></th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    for (const p of polls) {
+      const tr = tbody.insertRow();
+      tr.insertCell().textContent = p.title;
+      tr.insertCell().textContent = STATUSTEXT[p.status] || p.status;
+      tr.insertCell().textContent = p.antal_tider;
+      tr.insertCell().textContent = `${p.antal_svar} av ${p.antal_deltagare}`;
+      const knapp = document.createElement('button');
+      knapp.className = 'knapp--enkel';
+      knapp.textContent = 'Visa';
+      knapp.addEventListener('click', () => visaOmrostning(p.id));
+
+      const taBort = document.createElement('button');
+      taBort.className = 'knapp--fara';
+      taBort.style.marginLeft = '0.35rem';
+      taBort.textContent = 'Ta bort';
+      taBort.addEventListener('click', async () => {
+        const varning =
+          p.status === 'open'
+            ? `Ta bort "${p.title}"?\n\nReservationerna släpps i kalendern, och svaren som lämnats försvinner. Deltagarna får inget besked — avbryt omröstningen i stället om de ska informeras.`
+            : p.status === 'decided'
+              ? `Ta bort "${p.title}"?\n\nDet bokade mötet ligger kvar i kalendern, men underlaget med deltagare och svar tas bort.`
+              : `Ta bort "${p.title}"? Deltagare och svar tas bort.`;
+        if (!confirm(varning)) return;
+        taBort.disabled = true;
+        try {
+          const svar = await skicka(`${bas}/api/admin/polls/${p.id}`, undefined, 'DELETE');
+          const rader = ['Omröstningen är borttagen.'];
+          if (svar.releasedHolds) rader.push(`${svar.releasedHolds} reservationer släppta.`);
+          if (svar.motetKvarIKalendern) rader.push('Det bokade mötet ligger kvar i kalendern.');
+          notis(meddelande, rader.join(' '), 'ok');
+          document.getElementById('omrostningDetalj').hidden = true;
+          await laddaOmrostningar();
+        } catch (err) {
+          notis(meddelande, err.message, 'fel');
+          taBort.disabled = false;
+        }
+      });
+
+      const atgarder = tr.insertCell();
+      atgarder.append(knapp, taBort);
+    }
+    tabell.append(tbody);
+    omslag.append(tabell);
+    ut.append(omslag);
+  }
+
+  document.getElementById('oRensa').addEventListener('click', async () => {
+    const dagar = Number(document.getElementById('oRensaDagar').value);
+    if (!Number.isFinite(dagar) || dagar < 0) return notis(meddelande, 'Ange ett antal dagar.', 'fel');
+    if (!confirm(`Rensa beslutade och avbrutna omröstningar äldre än ${dagar} dagar?\n\nDeltagare och svar tas bort permanent. Bokade möten ligger kvar i kalendern.`)) return;
+    const knapp = document.getElementById('oRensa');
+    knapp.disabled = true;
+    try {
+      const svar = await skicka(`${bas}/api/admin/polls/rensa`, { older_than_days: dagar });
+      notis(
+        meddelande,
+        svar.borttagna
+          ? `${svar.borttagna} omröstningar rensade.${svar.slapptaReservationer ? ` ${svar.slapptaReservationer} kvarglömda reservationer släpptes.` : ''}`
+          : 'Inga omröstningar var äldre än så.',
+        'ok'
+      );
+      document.getElementById('omrostningDetalj').hidden = true;
+      await laddaOmrostningar();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
+  });
+
+  async function visaOmrostning(id) {
+    const ut = document.getElementById('omrostningDetalj');
+    ut.hidden = false;
+    ut.textContent = 'Hämtar…';
+    let d;
+    try {
+      d = await hamta(`${bas}/api/admin/polls/${id}`);
+    } catch (err) {
+      ut.textContent = '';
+      return notis(meddelande, err.message, 'fel');
+    }
+    ut.textContent = '';
+
+    const rubrik = document.createElement('h3');
+    rubrik.style.marginTop = '0';
+    rubrik.textContent = `${d.poll.title} — ${STATUSTEXT[d.poll.status] || d.poll.status}`;
+    ut.append(rubrik);
+
+    const lank = document.createElement('p');
+    lank.append(document.createTextNode('Länk att dela: '));
+    const a = document.createElement('a');
+    a.href = d.poll.url;
+    a.textContent = d.poll.url;
+    lank.append(a);
+    ut.append(lank);
+
+    if (d.poll.status === 'decided') {
+      const beslut = d.options.find((o) => o.id === d.poll.decided_option);
+      const p = document.createElement('p');
+      p.className = 'notis notis--ok';
+      p.textContent = `Beslutad tid: ${beslut ? beslut.when : 'okänd'}. Reservationerna är släppta.`;
+      ut.append(p);
+    }
+
+    // Tabell: tider som rader, deltagare som kolumner.
+    const omslag = document.createElement('div');
+    omslag.className = 'tabellomslag';
+    const tabell = document.createElement('table');
+    const thead = tabell.createTHead();
+    const rubrikRad = thead.insertRow();
+    for (const text of ['Tid', 'Ja', 'Om jag måste', 'Nej', 'Reserverad']) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = text;
+      rubrikRad.append(th);
+    }
+    for (const p of d.participants) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = p.name;
+      rubrikRad.append(th);
+    }
+    const tbody = tabell.createTBody();
+    for (const o of d.options) {
+      const tr = tbody.insertRow();
+      const tid = tr.insertCell();
+      tid.textContent = o.when;
+      if (o.id === d.poll.decided_option) tid.style.fontWeight = '700';
+      tr.insertCell().textContent = o.rakning.ja;
+      tr.insertCell().textContent = o.rakning.kanske;
+      tr.insertCell().textContent = o.rakning.nej;
+      const res = tr.insertCell();
+      res.textContent = o.holdOk ? 'Ja' : o.holdError ? 'Fel' : '–';
+      if (o.holdError) res.title = o.holdError;
+      for (const p of d.participants) {
+        const cell = tr.insertCell();
+        const svar = p.svar[o.id];
+        cell.textContent = svar ? SVARSTEXT[svar] : '–';
+        if (svar === 'ja') cell.style.color = 'var(--gron)';
+      }
+    }
+    omslag.append(tabell);
+    ut.append(omslag);
+
+    const utanSvar = d.participants.filter((p) => !p.responded);
+    if (utanSvar.length) {
+      const p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = `Väntar på svar från: ${utanSvar.map((x) => x.name).join(', ')}`;
+      ut.append(p);
+    }
+
+    // Åtgärder.
+    const knappar = document.createElement('p');
+    knappar.className = 'rad rad--knappar';
+
+    if (d.poll.status === 'open' || d.poll.status === 'closed') {
+      const valj = document.createElement('select');
+      valj.setAttribute('aria-label', 'Tid att besluta');
+      valj.style.flex = '1 1 18rem';
+      for (const o of d.options) {
+        const alt = document.createElement('option');
+        alt.value = String(o.id);
+        alt.textContent = `${o.when} (${o.rakning.ja} ja)`;
+        valj.append(alt);
+      }
+      const vilka = document.createElement('select');
+      vilka.setAttribute('aria-label', 'Vilka som bjuds in till mötet');
+      vilka.style.flex = '0 1 14rem';
+      for (const [varde, text] of [['alla', 'Bjud in alla inbjudna'], ['svarande', 'Bara de som svarat']]) {
+        const alt = document.createElement('option');
+        alt.value = varde;
+        alt.textContent = text;
+        vilka.append(alt);
+      }
+
+      const beslutaKnapp = document.createElement('button');
+      beslutaKnapp.textContent = 'Besluta denna tid';
+      beslutaKnapp.addEventListener('click', async () => {
+        const vald = d.options.find((o) => String(o.id) === valj.value);
+        const vilkaText = vilka.value === 'alla' ? 'Alla inbjudna' : 'De som svarat';
+        if (!confirm(`Boka mötet ${vald.when}?\n\n${vilkaText} får en kalenderinbjudan från Outlook, och övriga reservationer tas bort ur din kalender.`)) return;
+        beslutaKnapp.disabled = true;
+        try {
+          const svar = await skicka(`${bas}/api/admin/polls/${id}/decide`, {
+            optionId: vald.id,
+            invite: vilka.value,
+          });
+          const rader = [`Mötet är bokat ${svar.when}.`];
+          rader.push(svar.calendarWritten ? 'Det ligger i din kalender.' : 'Det kunde INTE skrivas i kalendern — se granskningsloggen.');
+          if (svar.releasedHolds) rader.push(`${svar.releasedHolds} reservationer släppta.`);
+          rader.push(
+            svar.beskedViaOutlook
+              ? `Outlook skickar inbjudan till ${svar.antalDeltagare} deltagare — tjänsten skickar inget extra mail.`
+              : svar.mailAccepted
+                ? 'Deltagarna har fått besked med kalenderfil.'
+                : 'Besked via e-post misslyckades.'
+          );
+          if (svar.antalUtanInbjudan) {
+            rader.push(`${svar.antalUtanInbjudan} som inte svarade fick ett kort besked utan inbjudan.`);
+          }
+          notis(meddelande, rader.join(' '), svar.calendarWritten ? 'ok' : 'fel');
+          await laddaOmrostningar();
+          await visaOmrostning(id);
+        } catch (err) {
+          notis(meddelande, err.message, 'fel');
+          beslutaKnapp.disabled = false;
+        }
+      });
+      knappar.append(valj, vilka, beslutaKnapp);
+    }
+
+    if (d.poll.status === 'open') {
+      knappar.append(
+        atgardsKnapp('Påminn de som inte svarat', 'knapp--enkel', async () => {
+          const svar = await skicka(`${bas}/api/admin/polls/${id}/remind`, {});
+          notis(meddelande, `${svar.skickade} påminnelser skickade.`, 'ok');
+        }),
+        atgardsKnapp('Stäng för nya svar', 'knapp--enkel', async () => {
+          await skicka(`${bas}/api/admin/polls/${id}/close`, {});
+          notis(meddelande, 'Omröstningen är stängd. Reservationerna ligger kvar.', 'ok');
+          await laddaOmrostningar();
+          await visaOmrostning(id);
+        })
+      );
+    }
+    if (d.poll.status === 'closed') {
+      knappar.append(
+        atgardsKnapp('Öppna igen', 'knapp--enkel', async () => {
+          await skicka(`${bas}/api/admin/polls/${id}/reopen`, {});
+          notis(meddelande, 'Omröstningen är öppen igen.', 'ok');
+          await laddaOmrostningar();
+          await visaOmrostning(id);
+        })
+      );
+    }
+    if (d.poll.status === 'open' || d.poll.status === 'closed') {
+      knappar.append(
+        atgardsKnapp('Avbryt omröstningen', 'knapp--fara', async () => {
+          if (!confirm('Avbryt omröstningen? Reservationerna tas bort ur kalendern och deltagarna får besked.')) return;
+          const orsak = prompt('Orsak som skickas till deltagarna (frivilligt):') ?? '';
+          const svar = await skicka(`${bas}/api/admin/polls/${id}/cancel`, { reason: orsak });
+          notis(meddelande, `Omröstningen är avbruten. ${svar.releasedHolds || 0} reservationer släppta.`, 'ok');
+          await laddaOmrostningar();
+          await visaOmrostning(id);
+        })
+      );
+    }
+    ut.append(knappar);
+
+    if (d.poll.status === 'open') {
+      const till = document.createElement('p');
+      till.className = 'rad';
+      const namn = document.createElement('input');
+      namn.placeholder = 'Namn';
+      namn.setAttribute('aria-label', 'Namn på ny deltagare');
+      const epost = document.createElement('input');
+      epost.type = 'email';
+      epost.placeholder = 'adress@exempel.se';
+      epost.setAttribute('aria-label', 'E-postadress till ny deltagare');
+      const laggTill = document.createElement('button');
+      laggTill.type = 'button';
+      laggTill.className = 'knapp--enkel';
+      laggTill.style.flex = '0 0 auto';
+      laggTill.textContent = 'Bjud in ytterligare deltagare';
+      laggTill.addEventListener('click', async () => {
+        try {
+          await skicka(`${bas}/api/admin/polls/${id}/participants`, { name: namn.value, email: epost.value });
+          notis(meddelande, 'Deltagaren är inbjuden.', 'ok');
+          await visaOmrostning(id);
+        } catch (err) {
+          notis(meddelande, err.message, 'fel');
+        }
+      });
+      till.append(namn, epost, laggTill);
+      ut.append(till);
+    }
+
+    ut.scrollIntoView({ block: 'nearest' });
+  }
+
+  function atgardsKnapp(text, klass, handling) {
+    const knapp = document.createElement('button');
+    knapp.type = 'button';
+    knapp.className = klass;
+    knapp.textContent = text;
+    knapp.addEventListener('click', async () => {
+      knapp.disabled = true;
+      try {
+        await handling();
+      } catch (err) {
+        notis(meddelande, err.message, 'fel');
+      } finally {
+        knapp.disabled = false;
+      }
+    });
+    return knapp;
+  }
+
+  /* ---- gallring ---- */
+
+  async function visaGallring() {
+    const ut = document.getElementById('gallringStatus');
+    ut.textContent = '';
+    let d;
+    try {
+      d = await hamta(`${bas}/api/admin/gallring`);
+    } catch (err) {
+      return notis(meddelande, err.message, 'fel');
+    }
+
+    const regel = (namn, dagar) =>
+      `${namn}: ${dagar ? `raderas ${dagar} dagar efter` : 'gallras inte'}`;
+
+    const lista = document.createElement('ul');
+    for (const text of [
+      regel('Bokningar', d.installningar.bokningar) + (d.installningar.bokningar ? ' mötets sluttid' : ''),
+      regel('Avslutade omröstningar', d.installningar.omrostningar) +
+        (d.installningar.omrostningar ? ' att de beslutats eller avbrutits' : ''),
+      regel('Granskningslogg', d.installningar.logg),
+    ]) {
+      const li = document.createElement('li');
+      li.textContent = text;
+      lista.append(li);
+    }
+    ut.append(lista);
+
+    const vantar = document.createElement('p');
+    const n = d.nu.bokningarBorttagna + d.nu.omrostningarBorttagna + d.nu.loggposterBorttagna;
+    vantar.className = n ? 'notis notis--info' : 'meta';
+    vantar.textContent = n
+      ? `Att gallra just nu: ${d.nu.bokningarBorttagna} bokningar, ${d.nu.omrostningarBorttagna} omröstningar, ${d.nu.loggposterBorttagna} loggposter. Jobbet kör en gång per dygn.`
+      : 'Ingenting är äldre än gränserna just nu. Jobbet kör en gång per dygn.';
+    ut.append(vantar);
+
+    if (d.senaste) {
+      const senast = document.createElement('p');
+      senast.className = 'meta';
+      const nar = new Date(d.senaste.at).toLocaleString('sv-SE');
+      senast.textContent =
+        `Senaste gallring ${nar}: ${d.senaste.bokningarBorttagna || 0} bokningar, ` +
+        `${d.senaste.omrostningarBorttagna || 0} omröstningar, ${d.senaste.loggposterBorttagna || 0} loggposter.`;
+      ut.append(senast);
+    }
+
+    const info = document.createElement('p');
+    info.className = 'meta';
+    info.textContent =
+      'Gränserna ändras i .env (BOKA_GALLRING_*). Öppna omröstningar gallras aldrig automatiskt, ' +
+      'eftersom de väntar på svar och håller tider reserverade i kalendern.';
+    ut.append(info);
+  }
+
+  document.getElementById('gallraNu').addEventListener('click', async () => {
+    if (!confirm('Kör gallringen nu? Uppgifter äldre än gränserna raderas permanent.')) return;
+    const knapp = document.getElementById('gallraNu');
+    knapp.disabled = true;
+    try {
+      const r = await skicka(`${bas}/api/admin/gallring`, {});
+      notis(
+        meddelande,
+        `Gallring klar: ${r.bokningarBorttagna} bokningar, ${r.omrostningarBorttagna} omröstningar, ${r.loggposterBorttagna} loggposter borttagna.`,
+        'ok'
+      );
+      await visaGallring();
+      await laddaOmrostningar();
+      await laddaBokningar();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
+  });
+
+
+  /* ---- användare (superadmin) ---- */
+
+  let anvandare = [];
+
+  async function laddaAnvandare() {
+    const svar = await hamta(`${bas}/api/admin/users`);
+    anvandare = svar.users;
+    byggVardval();
+    if (!svar.admin) return;
+
+    const tbody = document.querySelector('#anvandarTabell tbody');
+    tbody.textContent = '';
+    for (const u of svar.users) {
+      const tr = tbody.insertRow();
+      if (!u.active) tr.style.opacity = '0.6';
+      tr.insertCell().textContent = u.name + (u.title ? `, ${u.title}` : '');
+      tr.insertCell().textContent = u.email || '';
+      tr.insertCell().textContent = u.slug;
+      tr.insertCell().textContent = u.role === 'admin' ? 'Superadmin' : 'Användare';
+      tr.insertCell().textContent = u.kalender ? 'Kopplad' : '–';
+      tr.insertCell().textContent = u.active ? 'Aktiv' : 'Avstängd';
+
+      const atgarder = tr.insertCell();
+      const jagSjalv = u.id === jag.user.id;
+
+      const andra = document.createElement('button');
+      andra.className = 'knapp--enkel';
+      andra.textContent = 'Ändra';
+      andra.addEventListener('click', () => fyllAnvandarFormular(u));
+
+      const losen = document.createElement('button');
+      losen.className = 'knapp--enkel';
+      losen.style.marginLeft = '0.35rem';
+      losen.textContent = 'Nytt lösenord';
+      losen.addEventListener('click', async () => {
+        if (!confirm(`Sätt ett nytt lösenord för ${u.name}? Personen loggas ut.`)) return;
+        try {
+          const r = await skicka(`${bas}/api/admin/users/${u.id}/password`, {});
+          notis(meddelande, `Nytt lösenord för ${u.name}: ${r.password} — lämna det på ett säkert sätt, det visas bara nu.`, 'ok');
+        } catch (err) {
+          notis(meddelande, err.message, 'fel');
+        }
+      });
+
+      atgarder.append(andra, losen);
+    }
+  }
+
+  function fyllAnvandarFormular(u) {
+    document.getElementById('aId').value = u ? u.id : '';
+    document.getElementById('aNamn').value = u ? u.name : '';
+    document.getElementById('aEpost').value = u ? u.email || '' : '';
+    document.getElementById('aTitel').value = u ? u.title || '' : '';
+    document.getElementById('aSlug').value = u ? u.slug : '';
+    document.getElementById('aRoll').value = u ? u.role : 'host';
+    document.getElementById('aAktiv').checked = u ? u.active : true;
+    document.getElementById('aStatusRad').hidden = !u;
+    document.getElementById('aAvbryt').hidden = !u;
+    document.getElementById('aSpara').textContent = u ? 'Spara ändringar' : 'Lägg upp användare';
+    document.getElementById('anvandarRubrik').textContent = u ? `Ändra: ${u.name}` : 'Ny användare';
+
+    // Den egna raden: rollen och statusen är låsta så att ingen låser ut sig själv.
+    const jagSjalv = Boolean(u) && u.id === jag.user.id;
+    const roll = document.getElementById('aRoll');
+    const aktiv = document.getElementById('aAktiv');
+    roll.disabled = jagSjalv;
+    aktiv.disabled = jagSjalv;
+    roll.title = jagSjalv ? 'Du kan inte ändra din egen roll' : '';
+    aktiv.title = jagSjalv ? 'Du kan inte stänga av dig själv' : '';
+
+    document.getElementById('aHjalp').textContent = u
+      ? 'Ändrar du e-postadressen måste personen logga in med den nya adressen, även via Microsoft; kalenderkopplingen följer med kontot. ' +
+        'Ändrar du kortnamnet slutar redan delade bokningslänkar att fungera.'
+      : 'Lösenord behövs inte om personen loggar in med Microsoft — det är den enklaste vägen och kopplar kalendern i samma steg.';
+
+    document.getElementById('aNamn').focus();
+    document.getElementById('anvandarRubrik').scrollIntoView({ block: 'nearest' });
+  }
+
+  document.getElementById('aAvbryt').addEventListener('click', () => fyllAnvandarFormular(null));
+
+  document.getElementById('anvandarForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const id = document.getElementById('aId').value;
+    const kropp = {
+      name: document.getElementById('aNamn').value,
+      email: document.getElementById('aEpost').value,
+      title: document.getElementById('aTitel').value,
+      slug: document.getElementById('aSlug').value,
+      role: document.getElementById('aRoll').value,
+    };
+    const knapp = document.getElementById('aSpara');
+    knapp.disabled = true;
+    try {
+      if (id) {
+        kropp.active = document.getElementById('aAktiv').checked;
+        if (!kropp.active && !confirm('Stänga av användaren? Personen loggas ut och kan inte bokas.')) {
+          knapp.disabled = false;
+          return;
+        }
+        const r = await skicka(`${bas}/api/admin/users/${id}`, kropp, 'PUT');
+        notis(
+          meddelande,
+          r.epostBytt
+            ? 'Användaren är sparad. E-postadressen är ändrad — personen loggar nu in med den nya adressen.'
+            : 'Användaren är sparad.',
+          'ok'
+        );
+      } else {
+        const r = await skicka(`${bas}/api/admin/users`, kropp);
+        notis(meddelande, `Användaren är upplagd. Bokningssidan blir ${location.origin}${bas}/${r.slug} när en tjänst lagts upp.`, 'ok');
+      }
+      document.getElementById('anvandarForm').reset();
+      fyllAnvandarFormular(null);
+      await laddaAnvandare();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
+  });
+
+  /** Kryssrutor för medvärdar på en bokningstjänst. */
+  function byggVardval(valda = []) {
+    const ut = document.getElementById('vardarLista');
+    if (!ut) return;
+    const andra = anvandare.filter((u) => u.active && u.id !== jag.user.id);
+    ut.textContent = '';
+    if (!andra.length) {
+      const p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = 'Det finns inga andra användare att lägga till ännu.';
+      ut.append(p);
+      return;
+    }
+    for (const u of andra) {
+      const id = `vard_${u.id}`;
+      const rad = document.createElement('p');
+      rad.style.margin = '0 0 0.35rem';
+      const kryss = document.createElement('input');
+      kryss.type = 'checkbox';
+      kryss.id = id;
+      kryss.value = String(u.id);
+      kryss.dataset.vard = '1';
+      kryss.checked = valda.includes(u.id);
+      kryss.style.width = 'auto';
+      kryss.style.marginRight = '0.4rem';
+      const etikett = document.createElement('label');
+      etikett.setAttribute('for', id);
+      etikett.style.display = 'inline';
+      etikett.style.fontWeight = '400';
+      etikett.textContent = u.name + (u.title ? `, ${u.title}` : '') + (u.kalender ? '' : ' (ingen kalender kopplad)');
+      rad.append(kryss, etikett);
+      ut.append(rad);
+    }
+  }
+
+  const valdaVardar = () =>
+    [...document.querySelectorAll('[data-vard]')].filter((k) => k.checked).map((k) => Number(k.value));
+
+  /* ---- organisation (superadmin) ---- */
+
+  async function laddaOrganisation() {
+    let o;
+    try {
+      o = await hamta(`${bas}/api/admin/organization`);
+    } catch (err) {
+      return; // Inte superadmin.
+    }
+    document.getElementById('oOrgNamn').value = o.name || '';
+    document.getElementById('oOrgWebb').value = o.website_url || '';
+    if (o.theme_color) {
+      document.getElementById('oOrgFarg').value = o.theme_color;
+      document.getElementById('oOrgFargText').value = o.theme_color;
+    }
+    visaKontrast(o.tema);
+
+    const nu = document.getElementById('loggaNu');
+    nu.textContent = '';
+    if (o.logoUrl) {
+      const bild = document.createElement('img');
+      bild.src = `${bas}/${o.logoUrl}`;
+      bild.alt = 'Nuvarande logotyp';
+      bild.style.maxHeight = '60px';
+      nu.append(bild);
+      document.getElementById('taBortLogga').hidden = false;
+    } else {
+      nu.className = 'meta';
+      nu.textContent = 'Ingen logotyp uppladdad.';
+      document.getElementById('taBortLogga').hidden = true;
+    }
+  }
+
+  function visaKontrast(tema) {
+    const ut = document.getElementById('kontrastBesked');
+    ut.textContent = '';
+    if (!tema) return;
+    const p = document.createElement('p');
+    if (tema.justerad) {
+      p.className = 'notis notis--info';
+      p.textContent =
+        `Din färg ${tema.vald} ger ${tema.kontrastVald}:1 mot vitt och klarar inte kravet på 4,5:1 för text. ` +
+        `Texter och knappar använder därför ${tema.text} (${tema.kontrastText}:1), medan din färg används som dekor. ` +
+        'Så blir sidan läsbar även för den som ser sämre.';
+    } else {
+      p.className = 'notis notis--ok';
+      p.textContent = `Färgen ger ${tema.kontrastVald}:1 mot vitt och används som den är.`;
+    }
+    ut.append(p);
+  }
+
+  document.getElementById('oOrgFarg').addEventListener('input', (ev) => {
+    document.getElementById('oOrgFargText').value = ev.target.value;
+  });
+  document.getElementById('oOrgFargText').addEventListener('change', (ev) => {
+    if (/^#?[0-9a-f]{6}$/i.test(ev.target.value.trim())) {
+      document.getElementById('oOrgFarg').value = ev.target.value.trim().replace(/^#?/, '#');
+    }
+  });
+
+  document.getElementById('orgForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try {
+      const r = await skicka(`${bas}/api/admin/organization`, {
+        name: document.getElementById('oOrgNamn').value,
+        website_url: document.getElementById('oOrgWebb').value,
+        theme_color: document.getElementById('oOrgFargText').value || document.getElementById('oOrgFarg').value,
+      }, 'PUT');
+      visaKontrast(r.tema);
+      notis(meddelande, 'Organisationen är sparad. Ladda om en publik sida för att se den.', 'ok');
+      await visaOrganisation(bas);
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  document.getElementById('oLogga').addEventListener('change', async (ev) => {
+    const fil = ev.target.files && ev.target.files[0];
+    if (!fil) return;
+    if (fil.size > 1500000) {
+      ev.target.value = '';
+      return notis(meddelande, `Bilden är ${Math.round(fil.size / 1024)} kB. Högst 1500 kB.`, 'fel');
+    }
+    const lasare = new FileReader();
+    lasare.onload = async () => {
+      try {
+        await skicka(`${bas}/api/admin/organization/logo`, { data: String(lasare.result) });
+        notis(meddelande, 'Logotypen är uppladdad.', 'ok');
+        await laddaOrganisation();
+        await visaOrganisation(bas);
+      } catch (err) {
+        notis(meddelande, err.message, 'fel');
+      } finally {
+        ev.target.value = '';
+      }
+    };
+    lasare.readAsDataURL(fil);
+  });
+
+  document.getElementById('taBortLogga').addEventListener('click', async () => {
+    if (!confirm('Ta bort logotypen?')) return;
+    await skicka(`${bas}/api/admin/organization/logo`, undefined, 'DELETE');
+    notis(meddelande, 'Logotypen är borttagen.', 'ok');
+    await laddaOrganisation();
+  });
+
+  /* ---- uppstart ---- */
+  async function start() {
+    try {
+      jag = await hamta(`${bas}/api/me`);
+    } catch (err) {
+      inloggning.hidden = false;
+      panel.hidden = true;
+      await visaMsInloggning();
+      // Avvisad i Microsoft-flödet: det finns ingen session, men beskedet
+      // måste ändå fram — annars ser det ut som att inget hände.
+      const avvisad = new URLSearchParams(location.search).get('ms');
+      if (avvisad === 'doman') {
+        notis(meddelande, 'Den adressen får inte skapa konto här. Konton skapas automatiskt bara för Sambruks egna adresser — kontakta kansliet om du ska ha ett konto.', 'fel');
+      } else if (avvisad === 'inaktiv') {
+        notis(meddelande, 'Kontot är avstängt. Kontakta kansliet.', 'fel');
+      } else if (avvisad === 'ingen-adress') {
+        notis(meddelande, 'Microsoft lämnade ingen e-postadress för kontot, så inget konto kunde skapas.', 'fel');
+      } else if (avvisad === 'nekad') {
+        notis(meddelande, 'Inloggningen avbröts i Microsofts dialog.', 'fel');
+      } else if (avvisad === 'state') {
+        notis(meddelande, 'Inloggningen tog för lång tid. Försök igen.', 'fel');
+      } else if (avvisad === 'fel') {
+        notis(meddelande, 'Något gick fel mot Microsoft. Försök igen, eller logga in med lösenord.', 'fel');
+      }
+      document.getElementById('epost').focus();
+      return;
+    }
+    inloggning.hidden = true;
+    panel.hidden = false;
+    document.getElementById('anvandare').textContent = `${jag.user.name} (${jag.user.email})`;
+    const publik = document.getElementById('publikLank');
+    publik.href = `${bas}/${jag.user.slug}`;
+    publik.textContent = 'Din publika bokningssida';
+
+    await laddaAnvandare();
+    if (jag.user.role === 'admin') {
+      document.getElementById('flik-anvandare').hidden = false;
+      document.getElementById('flik-organisation').hidden = false;
+      await laddaOrganisation();
+    }
+    await Promise.all([laddaBokningar(), laddaTyper(), laddaUndantag(), laddaOmrostningar(), visaGallring()]);
+    visaM365();
+    // Initiera de fält som förklarar sig själva, utan att flytta fokus.
+    uppdateraPlatsfalt();
+    uppdateraSlugForhandsvisning();
+    platsHjalp();
+    visaValda();
+
+    const svar = new URLSearchParams(location.search).get('ms');
+    if (svar === 'klar') notis(meddelande, 'Kalendern är nu kopplad.', 'ok');
+    else if (svar === 'valkommen') notis(meddelande, `Välkommen! Kontot är skapat och kalendern kopplad. Din bokningssida är ${location.origin}${bas}/${jag.user.slug} — lägg upp en mötestyp under fliken Mötestyper.`, 'ok');
+    else if (svar === 'nekad') notis(meddelande, 'Inloggningen avbröts i Microsofts dialog.', 'fel');
+    else if (svar === 'fel') notis(meddelande, 'Något gick fel mot Microsoft. Se fliken Microsoft 365.', 'fel');
+    else if (svar === 'state') notis(meddelande, 'Inloggningen tog för lång tid. Försök igen.', 'fel');
+    else if (svar === 'ingen-brevlada') {
+      notis(meddelande, 'Kalendern kopplades INTE. Kontot du valde i Microsoft har ingen brevlåda — se fliken Microsoft 365.', 'fel');
+    }
+    if (svar) valjFlikId(svar === 'valkommen' ? 'flik-typer' : 'flik-m365');
+  }
+
+  await start();
+})();
+</script>
+</body>
+</html>
