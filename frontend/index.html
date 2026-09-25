@@ -21,12 +21,13 @@
 
 <main id="innehall">
   <div class="omslag">
-    <h1>Boka en tid med Sambruk</h1>
+    <h1 id="rubrik">Boka en tid</h1>
     <p>Välj vem du vill träffa och en tid som passar. Du får en bekräftelse på e-post
        med kalenderinbjudan och en länk för att avboka.</p>
 
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
 
+    <div id="grupp"></div>
     <div id="vardar"></div>
 
     <h2>Om tjänsten</h2>
@@ -43,46 +44,88 @@
 (async () => {
   const bas = basvag(0);
   visaIdag(document.getElementById('idag'));
-  await visaOrganisation(bas);
-  const ut = document.getElementById('vardar');
+  const org = await visaOrganisation(bas);
   const meddelande = document.getElementById('notis');
 
+  if (org?.name) document.getElementById('rubrik').textContent = `Boka en tid med ${org.name}`;
+
+  const PLATS = { teams: 'Teams-möte', phone: 'Telefonmöte', physical: 'På plats', other: '' };
+
+  /** Ett kort per tjänst, med längd och mötesform. */
+  function tjanstLank(t, undertext) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.className = 'block';
+    a.href = `${bas}/${t.hostSlug}/${t.slug}`;
+
+    const stark = document.createElement('strong');
+    stark.textContent = t.title;
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const delar = [`${t.duration_min} minuter`, PLATS[t.location_type]].filter(Boolean);
+    meta.textContent = ` — ${delar.join(' · ')}`;
+    a.append(stark, meta);
+
+    if (undertext) {
+      const rad = document.createElement('span');
+      rad.className = 'meta';
+      rad.style.display = 'block';
+      rad.textContent = undertext;
+      a.append(rad);
+    }
+    return (li.append(a), li);
+  }
+
+  function sektion(rubrikText, undertext) {
+    const s = document.createElement('section');
+    s.className = 'kort';
+    const h = document.createElement('h2');
+    h.style.marginTop = '0';
+    h.textContent = rubrikText;
+    s.append(h);
+    if (undertext) {
+      const p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = undertext;
+      s.append(p);
+    }
+    const ul = document.createElement('ul');
+    ul.className = 'lista';
+    s.append(ul);
+    return { sektion: s, lista: ul };
+  }
+
   try {
-    const data = await hamta(`${bas}/api/hosts`);
-    const vardar = (data.hosts || []).filter((v) => v.event_types.length);
-    if (!vardar.length) {
+    const data = await hamta(`${bas}/api/oversikt`);
+    const personer = (data.personer || []).filter((p) => p.eventTypes.length);
+
+    if (!personer.length && !(data.grupp || []).length) {
       notis(meddelande, 'Det finns inga bokningsbara tider upplagda ännu.', 'info');
       return;
     }
-    for (const vard of vardar) {
-      const sektion = document.createElement('section');
-      sektion.className = 'kort';
-      const rubrik = document.createElement('h2');
-      rubrik.textContent = vard.name + (vard.title ? `, ${vard.title}` : '');
-      rubrik.style.marginTop = '0';
-      sektion.append(rubrik);
 
-      const ul = document.createElement('ul');
-      ul.className = 'lista';
-      for (const typ of vard.event_types) {
-        const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.className = 'block';
-        a.href = `${bas}/${vard.slug}/${typ.slug}`;
-        const stark = document.createElement('strong');
-        stark.textContent = typ.title;
-        const meta = document.createElement('span');
-        meta.className = 'meta';
-        meta.textContent = ` — ${typ.duration_min} minuter`;
-        a.append(stark, meta);
-        li.append(a);
-        ul.append(li);
+    // Gruppbokningar först: de tillhör ingen enskild person och är lätta att
+    // missa om de ligger sist.
+    if (data.grupp.length) {
+      const { sektion: s, lista } = sektion(
+        'Gruppbokningar',
+        'Möten med flera deltagare från oss. Bara tider då samtliga är lediga visas.'
+      );
+      for (const t of data.grupp) {
+        lista.append(tjanstLank(t, `Med ${t.hosts.map((h) => h.name).join(', ')}`));
       }
-      sektion.append(ul);
-      ut.append(sektion);
+      document.getElementById('grupp').append(s);
+    }
+
+    const ut = document.getElementById('vardar');
+    for (const person of personer) {
+      const { sektion: s, lista } = sektion(person.name + (person.title ? `, ${person.title}` : ''));
+      for (const t of person.eventTypes) lista.append(tjanstLank(t));
+      ut.append(s);
     }
   } catch (err) {
-    notis(meddelande, `Kunde inte hämta värdar: ${err.message}`, 'fel');
+    notis(meddelande, `Kunde inte hämta bokningsbara tider: ${err.message}`, 'fel');
   }
 })();
 </script>

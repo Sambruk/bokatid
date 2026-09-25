@@ -279,6 +279,64 @@ router.get('/api/hosts', async (req, res) => {
   res.json({ hosts: rows, today: DateTime.now().setZone(TZ).setLocale('sv').toFormat('cccc d LLLL yyyy') });
 });
 
+/**
+ * Översikt över allt som går att boka i organisationen.
+ * Tjänster med en enda värd hör till den personen; tjänster med flera värdar
+ * står för sig, eftersom de inte tillhör någon enskild.
+ */
+router.get('/api/oversikt', async (req, res) => {
+  const { rows } = await q(
+    `SELECT e.slug, e.title, e.description, e.duration_min, e.location_type,
+            u.slug AS host_slug, u.name AS host_name, u.title AS host_title,
+            COALESCE(
+              (SELECT json_agg(json_build_object('name', hu.name, 'title', hu.title) ORDER BY hu.name)
+               FROM event_type_hosts h JOIN users hu ON hu.id = h.user_id
+               WHERE h.event_type_id = e.id AND hu.active AND hu.id <> u.id),
+              '[]') AS medvardar
+     FROM event_types e JOIN users u ON u.id = e.user_id
+     WHERE e.active AND u.active
+     ORDER BY u.name, e.title`
+  );
+
+  const personer = new Map();
+  const grupp = [];
+
+  for (const r of rows) {
+    const tjanst = {
+      slug: r.slug,
+      title: r.title,
+      description: r.description,
+      duration_min: r.duration_min,
+      location_type: r.location_type,
+      hostSlug: r.host_slug,
+    };
+
+    if (r.medvardar.length) {
+      grupp.push({
+        ...tjanst,
+        hosts: [{ name: r.host_name, title: r.host_title }, ...r.medvardar],
+      });
+      continue;
+    }
+
+    if (!personer.has(r.host_slug)) {
+      personer.set(r.host_slug, {
+        slug: r.host_slug,
+        name: r.host_name,
+        title: r.host_title,
+        eventTypes: [],
+      });
+    }
+    personer.get(r.host_slug).eventTypes.push(tjanst);
+  }
+
+  res.json({
+    personer: [...personer.values()],
+    grupp,
+    today: DateTime.now().setZone(TZ).setLocale('sv').toFormat('cccc d LLLL yyyy'),
+  });
+});
+
 router.get('/api/event-type/:hostSlug/:eventSlug', async (req, res) => {
   const found = await findHostAndEvent(req.params.hostSlug, req.params.eventSlug);
   if (!found) return bad(res, 404, 'Mötestypen finns inte');

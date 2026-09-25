@@ -18,6 +18,8 @@ en kommun kan läsa igenom koden, driftsätta den själv och lita på den.
 - Mötestyper med egen längd, buffertar, framförhållning och bokningsfönster
 - Veckoschema per värd, plus undantag för enskilda datum (semester, röda dagar)
 - Publik bokningssida utan inloggning och utan kakor för besökaren
+- Översikt över allt som går att boka: tjänster med en värd grupperade per person,
+  och tjänster med flera värdar under rubriken Gruppbokningar
 - Bekräftelse och avbokningslänk via e-post, med kalenderfil (ICS)
 - Tvåvägskoppling mot Microsoft 365: läser ledig/upptaget, skriver in mötet med
   Teams-länk — se [docs/M365-KOPPLING.md](docs/M365-KOPPLING.md)
