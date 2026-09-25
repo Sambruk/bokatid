@@ -65,7 +65,7 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     const admin = req.user.role === 'admin';
     const { rows } = await q(
       `SELECT u.id, u.name, u.slug, u.title, u.email, u.role, u.active, u.created_via, u.created_at,
-              u.organisation, u.feed_url, u.feed_error, u.feed_checked_at,
+              u.organisation, u.feed_url, u.feed_error, u.feed_checked_at, u.feed_token,
               (SELECT count(*) FROM ms_accounts m WHERE m.user_id = u.id) > 0 AS kalender,
               (SELECT count(*) FROM event_types e WHERE e.user_id = u.id AND e.active) AS tjanster
        FROM users u ORDER BY u.active DESC, u.name`
@@ -90,6 +90,9 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
               email: u.email,
               role: u.role,
               feed_url: u.feed_url,
+              externUrl: u.feed_token
+                ? `${(process.env.PUBLIC_URL || '').replace(/\/$/, '')}/extern/${u.feed_token}`
+                : null,
               created_via: u.created_via,
               created_at: u.created_at,
               tjanster: Number(u.tjanster),
@@ -138,8 +141,17 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
         ]);
       }
 
+      // En extern part loggar sällan in. Den personliga länken finns därför från
+      // början, så superadmin kan skicka den direkt.
+      const externLank = role === 'extern' ? await sakerstallFeedToken(userId) : null;
+
       await audit(req.user.email, 'user_created', { userId, slug: rows[0].slug, role, av: 'superadmin' });
-      res.status(201).json({ ok: true, id: userId, slug: rows[0].slug });
+      res.status(201).json({
+        ok: true,
+        id: userId,
+        slug: rows[0].slug,
+        externUrl: externLank ? `${process.env.PUBLIC_URL.replace(/\/$/, '')}/extern/${externLank}` : null,
+      });
     } catch (err) {
       if (err.code === '23505') {
         return bad(res, 409, /slug/.test(err.detail || '') ? 'Kortnamnet används redan' : 'E-postadressen finns redan');
@@ -230,6 +242,28 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
   });
 
   /* ---------- kalenderprenumeration ---------- */
+
+  /** Ser till att en extern part har en personlig länk, och ger den tillbaka. */
+  async function sakerstallFeedToken(userId) {
+    const { rows } = await q('SELECT feed_token FROM users WHERE id = $1', [userId]);
+    if (rows[0]?.feed_token) return rows[0].feed_token;
+    const token = randomToken(24);
+    await q('UPDATE users SET feed_token = $2 WHERE id = $1', [userId, token]);
+    return token;
+  }
+
+  router.post('/api/admin/users/:id/extern-lank', requireAuth, requireAdmin, async (req, res) => {
+    const id = int(req.params.id);
+    const { rows } = await q('SELECT id, role FROM users WHERE id = $1', [id]);
+    if (!rows[0]) return bad(res, 404, 'Användaren finns inte');
+
+    // Förnya: den gamla länken slutar gälla i samma stund.
+    if (req.body?.fornya) await q('UPDATE users SET feed_token = NULL WHERE id = $1', [id]);
+    const token = await sakerstallFeedToken(id);
+
+    await audit(req.user.email, req.body?.fornya ? 'extern_lank_fornyad' : 'extern_lank_skapad', { userId: id });
+    res.json({ ok: true, url: `${process.env.PUBLIC_URL.replace(/\/$/, '')}/extern/${token}` });
+  });
 
   /**
    * Sparar en ICS-adress och läser in den direkt, så att den som klistrar in

@@ -13,6 +13,7 @@ const graph = require('./lib/graph');
 const mail = require('./lib/mail');
 const { gallra, startaGallring, inställningar: gallringInst } = require('./lib/gallring');
 const feedSync = require('./lib/feed-sync');
+const { kontrolleraAdress } = require('./lib/ics-feed');
 
 const PORT = Number(process.env.PORT || 3000);
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
@@ -1262,6 +1263,73 @@ router.put('/api/admin/password', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- extern parts egen sida ---------- */
+
+/**
+ * En extern part sköter sin kalenderprenumeration utan konto, via en personlig
+ * länk. Den nuvarande adressen visas aldrig i klartext: en ICS-adress ur Outlook
+ * eller Google innehåller en hemlig nyckel till kalendern, och sidan nås av den
+ * som har länken.
+ */
+router.get('/api/extern/:token', async (req, res) => {
+  const { rows } = await q(
+    `SELECT name, organisation, title, feed_url, feed_error, feed_checked_at
+     FROM users WHERE feed_token = $1 AND active`,
+    [str(req.params.token, 80)]
+  );
+  const u = rows[0];
+  if (!u) return bad(res, 404, 'Länken gäller inte längre');
+
+  let vard = null;
+  if (u.feed_url) {
+    try {
+      vard = new URL(u.feed_url.replace(/^webcal:\/\//i, 'https://')).hostname;
+    } catch {
+      vard = 'okänd adress';
+    }
+  }
+
+  res.json({
+    name: u.name,
+    organisation: u.organisation,
+    title: u.title,
+    harPrenumeration: Boolean(u.feed_url),
+    vard,
+    fel: u.feed_error,
+    senastInlast: u.feed_checked_at,
+    today: DateTime.now().setZone(TZ).setLocale('sv').toFormat('cccc d LLLL yyyy'),
+  });
+});
+
+router.post('/api/extern/:token', async (req, res) => {
+  if (!rateLimit(`extern:${req.ip}`, 20, 15 * 60_000)) return bad(res, 429, 'För många försök. Försök igen senare.');
+
+  const { rows } = await q('SELECT * FROM users WHERE feed_token = $1 AND active', [str(req.params.token, 80)]);
+  const user = rows[0];
+  if (!user) return bad(res, 404, 'Länken gäller inte längre');
+
+  const url = str(req.body?.url, 1000);
+  if (!url) {
+    await q('UPDATE users SET feed_url = NULL, feed_error = NULL, feed_checked_at = NULL WHERE id = $1', [user.id]);
+    await q('DELETE FROM feed_busy WHERE user_id = $1', [user.id]);
+    await audit(user.email, 'prenumeration_borttagen', { userId: user.id, via: 'personlig länk' });
+    return res.json({ ok: true, borttagen: true });
+  }
+
+  try {
+    await kontrolleraAdress(url.replace(/^webcal:\/\//i, 'https://'));
+  } catch (err) {
+    return bad(res, 400, err.message);
+  }
+
+  await q('UPDATE users SET feed_url = $2, feed_error = NULL WHERE id = $1', [user.id, url]);
+  const resultat = await feedSync.uppdatera({ ...user, feed_url: url });
+  await audit(user.email, 'prenumeration_sparad', { userId: user.id, via: 'personlig länk', ok: resultat.ok });
+
+  if (!resultat.ok) return bad(res, 502, `Adressen sparades, men kalendern kunde inte läsas: ${resultat.skal}`);
+  res.json({ ok: true, antalTider: resultat.antal });
+});
+
 /* ---------- superadmin och organisation ---------- */
 
 const { requireAdmin } = require('./lib/admin-routes')({
@@ -1323,6 +1391,7 @@ router.get('/admin', page('admin.html'));
 router.get('/avboka/:token', page('avboka.html'));
 router.get('/omrostning/:token', page('omrostning.html'));
 router.get('/nytt-losenord/:token', page('nytt-losenord.html'));
+router.get('/extern/:token', page('extern.html'));
 router.get('/:hostSlug', page('vard.html'));
 router.get('/:hostSlug/:eventSlug', page('boka.html'));
 

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dela dina lediga tider</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml" id="ikon">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<a class="hoppa-till" href="#innehall">Hoppa till innehållet</a>
+<header class="topp">
+  <div class="omslag topp__rad">
+      <div class="topp__vanster">
+        <span class="topp__logglank" id="orgLank"></span>
+        <a class="topp__app" href="../admin" title="Logga in och administrera">Boka tid</a>
+      </div>
+      <p class="topp__org" id="orgNamn"></p>
+      <p class="idag" id="idag"></p>
+    </div>
+</header>
+
+<main id="innehall">
+  <div class="omslag">
+    <h1 id="rubrik">Dela dina lediga tider</h1>
+    <p id="halsning" class="meta"></p>
+
+    <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
+    <div id="innehallet" hidden>
+      <p>För att vi ska kunna föreslå tider som fungerar för dig behöver vi se när du
+         är upptagen. Det gör du genom att dela en länk till din kalender.</p>
+
+      <p><strong>Vi läser bara upptagna tider.</strong> Rubriker, deltagare och innehåll
+         hämtas aldrig, och vi kan inte skriva något i din kalender — en sådan länk
+         tillåter bara läsning.</p>
+
+      <div class="kort">
+        <h2 style="margin-top:0">Status</h2>
+        <p id="status"></p>
+      </div>
+
+      <form id="formular" class="kort">
+        <label for="url">Länk till din kalender</label>
+        <input id="url" type="url" placeholder="https://outlook.office365.com/owa/calendar/.../calendar.ics"
+               autocomplete="off" spellcheck="false">
+        <p class="hjalptext hjalptext--under">Klistra in hela adressen. Den sparas bara hos oss
+          och visas inte för någon annan.</p>
+        <p class="rad rad--knappar">
+          <button type="submit" id="spara">Spara och läs in</button>
+          <button type="button" class="knapp--fara" id="taBort" hidden>Sluta dela</button>
+        </p>
+      </form>
+
+      <h2>Så hittar du länken</h2>
+
+      <h3>Outlook på webben</h3>
+      <ol>
+        <li>Öppna Kalender och välj <em>Dela</em> i verktygsfältet.</li>
+        <li>Välj <em>Publicera en kalender</em>.</li>
+        <li>Välj den kalender du vill dela och behörigheten
+            <em>Kan visa när jag är upptagen</em>.</li>
+        <li>Klicka <em>Publicera</em> och kopiera adressen som slutar på <code>.ics</code>.</li>
+      </ol>
+
+      <h3>Google Kalender</h3>
+      <ol>
+        <li>Öppna inställningarna för kalendern du vill dela.</li>
+        <li>Gå till <em>Integrera kalender</em>.</li>
+        <li>Kopiera <em>Hemlig adress i iCal-format</em>.</li>
+      </ol>
+
+      <h3>Nextcloud</h3>
+      <ol>
+        <li>Öppna Kalender och klicka på de tre punkterna vid kalendern.</li>
+        <li>Välj <em>Kopiera privat länk</em>, eller dela kalendern publikt och
+            kopiera prenumerationslänken.</li>
+      </ol>
+
+      <p class="meta">Delar du en hemlig adress kan du när som helst återkalla den i ditt
+         kalenderprogram. Då slutar vi läsa, och du kan klistra in en ny här.</p>
+    </div>
+  </div>
+</main>
+
+<footer><div class="omslag"><a href="../">Alla bokningsbara tider</a> · Öppen källkod · <a href="https://github.com/Sambruk/bokatid">github.com/Sambruk/bokatid</a></div></footer>
+
+<script src="../js/gemensamt.js"></script>
+<script>
+(async () => {
+  const delar = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  const token = delar[delar.length - 1];
+  const bas = basvag(2);
+  visaIdag(document.getElementById('idag'));
+  await visaOrganisation(bas);
+
+  const meddelande = document.getElementById('notis');
+
+  function visaStatus(d) {
+    const status = document.getElementById('status');
+    document.getElementById('taBort').hidden = !d.harPrenumeration;
+
+    if (!d.harPrenumeration) {
+      status.className = 'notis notis--info';
+      status.textContent = 'Ingen kalender delas ännu. Vi ser inga av dina tider.';
+      return;
+    }
+    if (d.fel) {
+      status.className = 'notis notis--fel';
+      status.textContent = `Vi kan inte läsa kalendern just nu: ${d.fel}`;
+      return;
+    }
+    status.className = 'notis notis--ok';
+    // Adressen visas inte — den innehåller ofta en hemlig nyckel till kalendern.
+    status.textContent =
+      `Vi läser din kalender hos ${d.vard}. Senast inläst ` +
+      `${d.senastInlast ? new Date(d.senastInlast).toLocaleString('sv-SE') : 'ännu inte'}.`;
+  }
+
+  let uppgifter;
+  try {
+    uppgifter = await hamta(`${bas}/api/extern/${encodeURIComponent(token)}`);
+  } catch (err) {
+    document.getElementById('rubrik').textContent = 'Länken fungerar inte';
+    notis(meddelande, `${err.message}. Hör av dig till den som skickade den.`, 'fel');
+    return;
+  }
+
+  document.getElementById('halsning').textContent =
+    `${uppgifter.name}${uppgifter.organisation ? `, ${uppgifter.organisation}` : ''}`;
+  visaStatus(uppgifter);
+  document.getElementById('innehallet').hidden = false;
+
+  document.getElementById('formular').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const falt = document.getElementById('url');
+    const knapp = document.getElementById('spara');
+    if (!falt.value.trim()) {
+      falt.setAttribute('aria-invalid', 'true');
+      falt.focus();
+      return notis(meddelande, 'Klistra in adressen till din kalender.', 'fel');
+    }
+    falt.removeAttribute('aria-invalid');
+    knapp.disabled = true;
+    try {
+      const svar = await skicka(`${bas}/api/extern/${encodeURIComponent(token)}`, { url: falt.value.trim() });
+      notis(meddelande, `Tack! Vi läste in ${svar.antalTider} upptagna tider ur din kalender.`, 'ok');
+      falt.value = '';
+      visaStatus(await hamta(`${bas}/api/extern/${encodeURIComponent(token)}`));
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    } finally {
+      knapp.disabled = false;
+    }
+  });
+
+  document.getElementById('taBort').addEventListener('click', async () => {
+    if (!confirm('Sluta dela din kalender? Vi ser då inte längre när du är upptagen.')) return;
+    await skicka(`${bas}/api/extern/${encodeURIComponent(token)}`, { url: '' });
+    notis(meddelande, 'Vi läser inte längre din kalender.', 'ok');
+    visaStatus(await hamta(`${bas}/api/extern/${encodeURIComponent(token)}`));
+  });
+})();
+</script>
+</body>
+</html>

@@ -339,6 +339,15 @@
               <input id="aFeed" type="url" placeholder="https://..."></span>
           </div>
           <p class="hjalptext hjalptext--under" id="aFeedHjalp"></p>
+          <p id="aExternLankRad" hidden>
+            <label for="aExternLank">Personlig länk för den externa parten
+              <span class="hjalptext">(skicka den — då kan de själva byta kalenderadress utan konto)</span></label>
+            <input id="aExternLank" readonly onclick="this.select()">
+            <span class="rad rad--knappar" style="margin-top:0.5rem;display:flex">
+              <button type="button" class="knapp--enkel" id="aKopieraLank">Kopiera</button>
+              <button type="button" class="knapp--fara" id="aFornyaLank">Förnya länken</button>
+            </span>
+          </p>
 
           <p id="aStatusRad" hidden><label><input type="checkbox" id="aAktiv" checked> Aktiv — kan logga in och bokas</label></p>
           <div class="rad">
@@ -1587,6 +1596,8 @@
     document.getElementById('aRoll').value = u ? u.role : 'host';
     document.getElementById('aOrganisation').value = u ? u.organisation || '' : '';
     document.getElementById('aFeed').value = u ? u.feed_url || '' : '';
+    document.getElementById('aExternLank').value = u?.externUrl || '';
+    document.getElementById('aExternLankRad').hidden = !u?.externUrl;
     visaExternFalt();
     document.getElementById('aAktiv').checked = u ? u.active : true;
     const losenFalt = document.getElementById('aLosen');
@@ -1627,6 +1638,31 @@
       : '';
   }
   document.getElementById('aRoll').addEventListener('change', visaExternFalt);
+
+  document.getElementById('aKopieraLank').addEventListener('click', async () => {
+    const falt = document.getElementById('aExternLank');
+    falt.select();
+    try {
+      await navigator.clipboard.writeText(falt.value);
+      notis(meddelande, 'Länken är kopierad. Skicka den till den externa parten.', 'ok');
+    } catch {
+      notis(meddelande, 'Kopiera länken manuellt — den är markerad.', 'info');
+    }
+  });
+
+  document.getElementById('aFornyaLank').addEventListener('click', async () => {
+    const id = document.getElementById('aId').value;
+    if (!id) return;
+    if (!confirm('Förnya länken? Den gamla slutar fungera direkt — har du skickat den måste du skicka den nya.')) return;
+    try {
+      const r = await skicka(`${bas}/api/admin/users/${id}/extern-lank`, { fornya: true });
+      document.getElementById('aExternLank').value = r.url;
+      notis(meddelande, 'Ny länk skapad. Den gamla gäller inte längre.', 'ok');
+      await laddaAnvandare();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
 
   document.getElementById('aSlumpa').addEventListener('click', () => {
     const tecken = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1682,6 +1718,13 @@
         if (feedUrl) {
           const svarFeed = await skicka(`${bas}/api/admin/users/${r.id}/kalenderlank`, { url: feedUrl });
           notis(meddelande, `Kalenderlänken lästes in: ${svarFeed.antalTider} upptagna tider.`, 'ok');
+        }
+        if (r.externUrl) {
+          notis(
+            meddelande,
+            `Skicka den här länken till den externa parten, så kan de själva dela sin kalender: ${r.externUrl}`,
+            'ok'
+          );
         }
         notis(
           meddelande,

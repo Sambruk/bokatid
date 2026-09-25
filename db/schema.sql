@@ -306,3 +306,8 @@ CREATE TABLE IF NOT EXISTS feed_busy (
 );
 
 CREATE INDEX IF NOT EXISTS feed_busy_user_span ON feed_busy (user_id, start_utc, end_utc);
+
+-- Personlig länk för en extern part att sköta sin kalenderprenumeration utan
+-- inloggning. Samma mönster som avbokningslänken.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_feed_token ON users (feed_token) WHERE feed_token IS NOT NULL;

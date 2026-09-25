@@ -174,6 +174,13 @@ Tre saker som gör funktionen tillförlitlig i stället för farlig:
   omdirigeringar. Annars hade fältet kunnat användas för att nå tjänster som bara
   är åtkomliga inifrån servern.
 
+Den externa parten behöver inget konto för att sköta sin del. Superadmin skickar
+en **personlig länk**, och där kan de klistra in eller byta sin kalenderadress
+själva — samma mönster som avbokningslänken. Sidan visar aldrig den sparade
+adressen i klartext, bara vilken server den pekar på: en ICS-adress ur Outlook
+eller Google innehåller ofta en hemlig nyckel till kalendern. Läcker länken kan
+superadmin förnya den, och den gamla slutar gälla direkt.
+
 Tider märkta som lediga i kalendern (`TRANSP:TRANSPARENT` eller Outlooks
 busystatus `FREE`) blockerar ingenting — den som satt "ledig" menar att tiden går
 att boka.
