@@ -289,7 +289,8 @@ router.get('/api/oversikt', async (req, res) => {
     `SELECT e.slug, e.title, e.description, e.duration_min, e.location_type,
             u.slug AS host_slug, u.name AS host_name, u.title AS host_title,
             COALESCE(
-              (SELECT json_agg(json_build_object('name', hu.name, 'title', hu.title) ORDER BY hu.name)
+              (SELECT json_agg(json_build_object('name', hu.name, 'title', hu.title, 'slug', hu.slug)
+                               ORDER BY hu.name)
                FROM event_type_hosts h JOIN users hu ON hu.id = h.user_id
                WHERE h.event_type_id = e.id AND hu.active AND hu.id <> u.id),
               '[]') AS medvardar
@@ -311,27 +312,25 @@ router.get('/api/oversikt', async (req, res) => {
       hostSlug: r.host_slug,
     };
 
+    const person = (slug, name, title) => {
+      if (!personer.has(slug)) personer.set(slug, { slug, name, title, eventTypes: [] });
+      return personer.get(slug);
+    };
+
     if (r.medvardar.length) {
-      grupp.push({
-        ...tjanst,
-        hosts: [{ name: r.host_name, title: r.host_title }, ...r.medvardar],
-      });
+      const hosts = [{ name: r.host_name, title: r.host_title, slug: r.host_slug }, ...r.medvardar];
+      grupp.push({ ...tjanst, hosts });
+      // Även den som bara medverkar i gruppbokningar ska finnas i listan, så att
+      // personsidan kan visa namn och gruppbokningar för någon utan egna tjänster.
+      for (const h of hosts) person(h.slug, h.name, h.title);
       continue;
     }
 
-    if (!personer.has(r.host_slug)) {
-      personer.set(r.host_slug, {
-        slug: r.host_slug,
-        name: r.host_name,
-        title: r.host_title,
-        eventTypes: [],
-      });
-    }
-    personer.get(r.host_slug).eventTypes.push(tjanst);
+    person(r.host_slug, r.host_name, r.host_title).eventTypes.push(tjanst);
   }
 
   res.json({
-    personer: [...personer.values()],
+    personer: [...personer.values()].sort((a, b) => a.name.localeCompare(b.name, 'sv')),
     grupp,
     today: DateTime.now().setZone(TZ).setLocale('sv').toFormat('cccc d LLLL yyyy'),
   });

@@ -23,7 +23,14 @@
   <div class="omslag">
     <h1 id="rubrik">Välj typ av möte</h1>
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
     <ul class="lista" id="typer"></ul>
+
+    <section id="gruppSektion" hidden>
+      <h2>Gruppbokningar</h2>
+      <p class="meta" id="gruppText"></p>
+      <ul class="lista" id="grupp"></ul>
+    </section>
   </div>
 </main>
 
@@ -35,45 +42,77 @@
   const delar = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
   const vardSlug = delar[delar.length - 1];
   const bas = basvag(1);
-  // Sidan kan nås på olika djup, så relativa länkar till css/js sätts om här.
-  document.getElementById('stil').href = `${bas}/css/style.css`;
   visaIdag(document.getElementById('idag'));
   await visaOrganisation(bas);
 
   const meddelande = document.getElementById('notis');
-  const ut = document.getElementById('typer');
+  const PLATS = { teams: 'Teams-möte', phone: 'Telefonmöte', physical: 'På plats', other: '' };
 
+  function tjanstLank(t, undertext) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.className = 'block';
+    a.href = `${bas}/${t.hostSlug}/${t.slug}`;
+
+    const stark = document.createElement('strong');
+    stark.textContent = t.title;
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = ` — ${[`${t.duration_min} minuter`, PLATS[t.location_type]].filter(Boolean).join(' · ')}`;
+    a.append(stark, meta);
+
+    if (undertext) {
+      const rad = document.createElement('span');
+      rad.className = 'meta';
+      rad.style.display = 'block';
+      rad.textContent = undertext;
+      a.append(rad);
+    }
+    li.append(a);
+    return li;
+  }
+
+  let data;
   try {
-    const data = await hamta(`${bas}/api/hosts`);
-    const vard = (data.hosts || []).find((v) => v.slug === vardSlug);
-    if (!vard) {
-      notis(meddelande, 'Den här värden finns inte.', 'fel');
-      return;
-    }
-    document.title = `Boka tid med ${vard.name}`;
-    document.getElementById('rubrik').textContent =
-      `Boka tid med ${vard.name}${vard.title ? `, ${vard.title}` : ''}`;
-
-    if (!vard.event_types.length) {
-      notis(meddelande, 'Den här värden har inga bokningsbara mötestyper just nu.', 'info');
-      return;
-    }
-    for (const typ of vard.event_types) {
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.className = 'block';
-      a.href = `${bas}/${vard.slug}/${typ.slug}`;
-      const stark = document.createElement('strong');
-      stark.textContent = typ.title;
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.textContent = ` — ${typ.duration_min} minuter`;
-      a.append(stark, meta);
-      li.append(a);
-      ut.append(li);
-    }
+    data = await hamta(`${bas}/api/oversikt`);
   } catch (err) {
     notis(meddelande, `Kunde inte hämta uppgifter: ${err.message}`, 'fel');
+    return;
+  }
+
+  const person = (data.personer || []).find((p) => p.slug === vardSlug);
+  if (!person) {
+    document.getElementById('rubrik').textContent = 'Personen finns inte';
+    notis(meddelande, 'Den här personen har inga bokningsbara tider.', 'fel');
+    return;
+  }
+
+  document.title = `Boka tid med ${person.name}`;
+  document.getElementById('rubrik').textContent =
+    `Boka tid med ${person.name}${person.title ? `, ${person.title}` : ''}`;
+
+  const egna = document.getElementById('typer');
+  for (const t of person.eventTypes) egna.append(tjanstLank(t));
+
+  // Gruppbokningar där personen är en av värdarna. De hör inte till någon
+  // enskild i översikten, men hör hemma här: det är ett sätt att träffa hen.
+  const grupp = (data.grupp || []).filter((g) => g.hosts.some((h) => h.slug === vardSlug));
+  if (grupp.length) {
+    const ut = document.getElementById('grupp');
+    for (const t of grupp) {
+      const ovriga = t.hosts.filter((h) => h.slug !== vardSlug).map((h) => h.name);
+      ut.append(tjanstLank(t, ovriga.length ? `Tillsammans med ${ovriga.join(', ')}` : null));
+    }
+    document.getElementById('gruppText').textContent =
+      `Möten där ${person.name} deltar tillsammans med andra. Bara tider då samtliga är lediga visas.`;
+    document.getElementById('gruppSektion').hidden = false;
+  }
+
+  if (!person.eventTypes.length && !grupp.length) {
+    notis(meddelande, 'Den här personen har inga bokningsbara mötestyper just nu.', 'info');
+  } else if (!person.eventTypes.length) {
+    notis(meddelande, `${person.name} har inga egna mötestyper, men deltar i gruppbokningarna nedan.`, 'info');
   }
 })();
 </script>
