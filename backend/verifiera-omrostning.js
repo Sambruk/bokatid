@@ -50,8 +50,14 @@ async function anrop(vag, { metod = 'GET', kropp } = {}) {
   return { status: res.status, data };
 }
 
-async function token() {
-  const { rows } = await q('SELECT refresh_token FROM ms_accounts LIMIT 1');
+/** Token för omröstningens ägare — inte för "någon" som råkar ha en koppling. */
+async function token(userId) {
+  const { rows } = await q(
+    userId
+      ? 'SELECT refresh_token FROM ms_accounts WHERE user_id = $1'
+      : 'SELECT refresh_token FROM ms_accounts ORDER BY user_id LIMIT 1',
+    userId ? [userId] : []
+  );
   if (!rows.length) return null;
   const d = await graph.refresh(decrypt(rows[0].refresh_token));
   return d.access_token;
@@ -94,7 +100,8 @@ async function token() {
   rad(skapa.data.invitations.skickade === 1, 'Inbjudan skickades till deltagaren');
 
   // Ligger reservationerna verkligen i kalendern, och som preliminära?
-  const t1 = await token();
+  const { rows: [agare] } = await q('SELECT user_id FROM polls WHERE id = $1', [pollId]);
+  const t1 = await token(agare.user_id);
   const { rows: optioner } = await q('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY start_utc', [pollId]);
   let preliminara = 0;
   for (const o of optioner) {
@@ -170,7 +177,7 @@ async function token() {
   );
 
   // Är alla reservationer borta ur kalendern nu?
-  const t2 = await token();
+  const t2 = await token(agare.user_id);
   let kvar = 0;
   for (const o of optioner) {
     if (!o.graph_event_id) continue;

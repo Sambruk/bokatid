@@ -202,6 +202,9 @@ async function createEvent(accessToken, ev) {
   const created = await call(accessToken, '/me/events', { method: 'POST', body });
   return {
     id: created.id,
+    // Outlooks eget kalender-id. Skickar vi senare en ICS med samma id hamnar
+    // den på samma möte i mottagarens kalender i stället för som en dubblett.
+    icalUid: created.iCalUId || null,
     joinUrl: created.onlineMeeting?.joinUrl || created.onlineMeetingUrl || null,
     webLink: created.webLink || null,
   };

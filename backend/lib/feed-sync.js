@@ -10,7 +10,15 @@ const { q, audit } = require('./db');
 const { hamtaUpptaget } = require('./ics-feed');
 
 const FONSTER_DAGAR = 120;
-const UPPDATERA_VAR_MINUT = 15;
+
+/*
+ * Hur ofta prenumererade kalendrar läses om. Varje omläsning är en förfrågan
+ * till den externa partens server, så intervallet är en avvägning: tätare ger
+ * färskare tider men mer trafik hos dem. Fem minuter är rimligt för en handfull
+ * parter. Vid en bokning läses kalendern om ändå, så en inaktuell lista kan ge
+ * besvikelse men aldrig en dubbelbokning.
+ */
+const UPPDATERA_VAR_MINUT = Number(process.env.FEED_INTERVALL_MINUTER) || 5;
 
 /** Hämtar en användares kalender och ersätter de sparade tiderna. */
 async function uppdatera(user) {

@@ -158,8 +158,13 @@ tjänsten kan aldrig skriva i deras kalender, och det är en egenskap hos
 konstruktionen, inte en inställning som kan råka ändras.
 
 Deras upptagna tider räknas in precis som en intern kalender. Bokas ett möte skapas
-det i den interna värdens kalender, och den externa parten bjuds in som deltagare —
-de får alltså en vanlig kalenderinbjudan att tacka ja till.
+det i den interna värdens kalender, och den externa parten bjuds in som deltagare.
+
+Varje medvärd får dessutom ett eget besked från tjänsten med en **kalenderfil**
+bifogad. För en extern part är den ofta enda sättet att få in mötet, eftersom
+tjänsten aldrig kan skriva i deras kalender. Filen bär samma id som mötet i
+Outlook, så den lägger sig på samma möte i stället för som en dubblett bredvid
+inbjudan.
 
 Tre saker som gör funktionen tillförlitlig i stället för farlig:
 

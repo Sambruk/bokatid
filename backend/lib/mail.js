@@ -205,6 +205,54 @@ async function sendPasswordReset({ user, url, giltigMinuter = 60 }) {
   }
 }
 
+/**
+ * Besked till en medvärd om att ett möte bokats, med kalenderfil.
+ *
+ * Skrevs mötet i ägarens kalender har Outlook redan bjudit in medvärden, och
+ * kalenderfilen bär då SAMMA id som Outlooks möte — annars hade den hamnat som
+ * en dubblett bredvid inbjudan. För en extern part, vars kalender vi aldrig kan
+ * skriva i, är filen ofta det enda sättet att få in mötet.
+ */
+async function sendCoHostNotice({ booking, host, coHost, eventType, cancelUrl }) {
+  const tp = transport();
+  if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
+
+  const when = formatSwedish(new Date(booking.start_utc).toISOString(), new Date(booking.end_utc).toISOString(), TZ);
+  const plats = locationLine(booking, eventType);
+  const ics = buildIcs({ booking, host, eventType, method: 'REQUEST' });
+
+  const html = `
+    <p>Hej ${esc(coHost.name)},</p>
+    <p>Ett möte är bokat där du är med som värd.</p>
+    <table cellpadding="4">
+      <tr><th align="left">Möte</th><td>${esc(eventType.title)}</td></tr>
+      <tr><th align="left">När</th><td>${esc(when)} (svensk tid)</td></tr>
+      <tr><th align="left">Bokare</th><td>${esc(booking.invitee_name)} &lt;${esc(booking.invitee_email)}&gt;</td></tr>
+      ${booking.invitee_org ? `<tr><th align="left">Organisation</th><td>${esc(booking.invitee_org)}</td></tr>` : ''}
+      <tr><th align="left">Värd</th><td>${esc(host.name)}</td></tr>
+      ${plats ? `<tr><th align="left">Var</th><td>${esc(plats)}</td></tr>` : ''}
+    </table>
+    ${answersHtml(booking.answers)}
+    <p>Bifogad kalenderfil lägger in mötet i din kalender.</p>
+    ${cancelUrl ? `<p>Behöver mötet avbokas: <a href="${esc(cancelUrl)}">${esc(cancelUrl)}</a></p>` : ''}`;
+
+  try {
+    await tp.sendMail({
+      from: sender(),
+      to: `"${coHost.name}" <${coHost.email}>`,
+      subject: `Bokat möte: ${eventType.title} — ${when}`,
+      html,
+      attachments: [
+        { filename: 'mote.ics', content: ics, contentType: 'text/calendar; charset=utf-8; method=REQUEST' },
+      ],
+      icalEvent: { method: 'REQUEST', content: ics },
+    });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, errors: [String(err.message)] };
+  }
+}
+
 /* ---------- omröstningar ---------- */
 
 const tidRad = (o) => formatSwedish(new Date(o.start_utc).toISOString(), new Date(o.end_utc).toISOString(), TZ);
@@ -436,6 +484,7 @@ function answersHtml(answers) {
 
 module.exports = {
   sendPasswordReset,
+  sendCoHostNotice,
   sendPollVoteReceipt,
   buildTentativeIcs,
   sendBookingMails,

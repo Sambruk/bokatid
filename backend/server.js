@@ -530,13 +530,21 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
         locationText: eventType.location_text,
         transactionId: icsUid,
       });
-      await q('UPDATE bookings SET graph_event_id = $2, join_url = $3 WHERE id = $1', [
+      /*
+       * Outlooks eget kalender-id tar över som vårt UID. Skickar vi sedan en
+       * kalenderfil till en medvärd pekar den på SAMMA möte som Outlooks
+       * inbjudan, i stället för att lägga sig som en dubblett bredvid.
+       */
+      const uid = created.icalUid || booking.ics_uid;
+      await q('UPDATE bookings SET graph_event_id = $2, join_url = $3, ics_uid = $4 WHERE id = $1', [
         booking.id,
         created.id,
         created.joinUrl,
+        uid,
       ]);
       booking.graph_event_id = created.id;
       booking.join_url = created.joinUrl;
+      booking.ics_uid = uid;
       calendarWritten = true;
     } catch (err) {
       await audit('system', 'graph_create_failed', { bookingId: booking.id, error: String(err.message) });
@@ -550,6 +558,23 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
    * Värdens eget "ny bokning"-mail är ingen dubblett: värden är organisatör och
    * får ingen inbjudan från Outlook.
    */
+  /*
+   * Medvärdar får ett eget besked med kalenderfil. För en extern part är det
+   * ofta enda sättet att få in mötet: deras kalender kan tjänsten aldrig skriva i.
+   */
+  const medvardar = found.hosts.filter((h) => h.id !== host.id);
+  let medvardsbesked = 0;
+  for (const medvard of medvardar) {
+    const svar = await mail.sendCoHostNotice({
+      booking,
+      host,
+      coHost: medvard,
+      eventType,
+      cancelUrl: cancelUrl(cancelToken),
+    });
+    if (svar.sent) medvardsbesked++;
+  }
+
   const mailResult = await mail.sendBookingMails({
     booking,
     host,
@@ -567,6 +592,7 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
     calendarWritten,
     mailAccepted: mailResult.sent,
     mailErrors: mailResult.sent ? undefined : mailResult.errors || mailResult.reason,
+    medvardsbesked: `${medvardsbesked} av ${medvardar.length}`,
   });
 
   res.status(201).json({

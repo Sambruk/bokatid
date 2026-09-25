@@ -35,8 +35,19 @@ const rad = (ok, text, extra) => {
   return ok ? 0 : 1;
 };
 
-async function token() {
-  const { rows } = await q('SELECT refresh_token FROM ms_accounts LIMIT 1');
+/**
+ * Token för en BESTÄMD värd. Ett `LIMIT 1` utan villkor gav tokenet för fel
+ * person så fort mer än en hade kopplat sin kalender, och då letade testet
+ * efter mötet i fel brevlåda: "The specified object was not found in the store."
+ */
+async function token(userId) {
+  const { rows } = await q(
+    userId
+      ? 'SELECT refresh_token FROM ms_accounts WHERE user_id = $1'
+      : 'SELECT refresh_token FROM ms_accounts ORDER BY user_id LIMIT 1',
+    userId ? [userId] : []
+  );
+  if (!rows[0]) throw new Error('Ingen kalenderkoppling för den värden');
   const d = await graph.refresh(decrypt(rows[0].refresh_token));
   return d.access_token;
 }
@@ -93,7 +104,7 @@ async function token() {
   fel += rad(Boolean(bokning.graph_event_id), 'Kalenderhändelsens id sparades i databasen');
 
   // Finns mötet verkligen i kalendern?
-  const t1 = await token();
+  const t1 = await token(bokning.user_id);
   let handelse;
   try {
     handelse = await graph.call(t1, `/me/events/${encodeURIComponent(bokning.graph_event_id)}`);
@@ -120,7 +131,7 @@ async function token() {
   ).json();
   fel += rad(avbokat.ok === true, 'Avbokningen gick igenom');
 
-  const t2 = await token();
+  const t2 = await token(bokning.user_id);
   try {
     const kvar = await graph.call(t2, `/me/events/${encodeURIComponent(bokning.graph_event_id)}?$select=id,isCancelled`);
     fel += rad(Boolean(kvar.isCancelled), 'Mötet är markerat som avbokat i kalendern',
