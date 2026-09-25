@@ -75,13 +75,20 @@ function refresh(refreshToken) {
   });
 }
 
-async function call(accessToken, path, { method = 'GET', body } = {}) {
+async function call(accessToken, path, { method = 'GET', body, prefer } = {}) {
+  /*
+   * Ingen tidszonsheader som standard. En global
+   * `Prefer: outlook.timezone="Europe/Stockholm"` fick Graph att svara i lokal
+   * tid medan koden tolkade svaret som UTC — upptagna tider hamnade två timmar
+   * fel, så bokade tider visades som lediga. Den som behöver en viss tidszon
+   * begär den uttryckligen och kontrollerar vad svaret faktiskt säger.
+   */
   const res = await fetch(`${GRAPH}${path}`, {
     method,
     headers: {
       authorization: `Bearer ${accessToken}`,
       'content-type': 'application/json',
-      prefer: 'outlook.timezone="Europe/Stockholm"',
+      ...(prefer ? { prefer } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -105,23 +112,69 @@ function me(accessToken) {
  * getSchedule ger bara ledig/upptagen — inga mötesrubriker lämnar M365,
  * vilket är avsiktligt: tjänsten behöver inte veta vad mötena handlar om.
  */
+// Graph tillåter högst 62 dygn per fråga om ledig/upptaget. Längre fönster
+// delas upp; en omröstning kan föreslå tider långt isär.
+const MAX_DYGN_PER_FRAGA = 60;
+
 async function busyIntervals(accessToken, { upn, fromIso, toIso }) {
-  const data = await call(accessToken, '/me/calendar/getSchedule', {
-    method: 'POST',
-    body: {
-      schedules: [upn],
-      startTime: { dateTime: fromIso.replace('Z', ''), timeZone: 'UTC' },
-      endTime: { dateTime: toIso.replace('Z', ''), timeZone: 'UTC' },
-      availabilityViewInterval: 15,
-    },
+  const start = new Date(fromIso);
+  const slut = new Date(toIso);
+  const langd = MAX_DYGN_PER_FRAGA * 86400_000;
+
+  const alla = [];
+  for (let fran = start; fran < slut; fran = new Date(fran.getTime() + langd)) {
+    const till = new Date(Math.min(fran.getTime() + langd, slut.getTime()));
+    const data = await call(accessToken, '/me/calendar/getSchedule', {
+      method: 'POST',
+      prefer: 'outlook.timezone="UTC"',
+      body: {
+        schedules: [upn],
+        startTime: { dateTime: fran.toISOString().replace('Z', ''), timeZone: 'UTC' },
+        endTime: { dateTime: till.toISOString().replace('Z', ''), timeZone: 'UTC' },
+        availabilityViewInterval: 15,
+      },
+    });
+    alla.push(...tolkaSchema(data?.value?.[0]?.scheduleItems || []));
+  }
+
+  // Delarna kan överlappa i kanterna; samma post ska inte räknas två gånger.
+  const sedda = new Set();
+  return alla.filter((b) => {
+    const nyckel = `${b.start}|${b.end}`;
+    if (sedda.has(nyckel)) return false;
+    sedda.add(nyckel);
+    return true;
   });
-  const items = data?.value?.[0]?.scheduleItems || [];
+}
+
+/** Statusar som ska blockera en tid. 'free' gör det inte — den är ledig med flit. */
+const UPPTAGET = ['busy', 'oof', 'tentative', 'workingElsewhere'];
+
+/**
+ * Översätter Graphs schemaposter till UTC-intervall.
+ *
+ * Kastar hellre än gissar om svaret inte är i UTC: en felräknad tidszon visar
+ * bokade tider som lediga, och då är det bättre att ledig/upptaget-läsningen
+ * misslyckas synligt och loggas än att den tyst ger fel svar.
+ */
+function tolkaSchema(items) {
   return items
-    .filter((i) => ['busy', 'oof', 'tentative', 'workingElsewhere'].includes(i.status))
-    .map((i) => ({
-      start: `${i.start.dateTime.replace(' ', 'T').slice(0, 19)}Z`,
-      end: `${i.end.dateTime.replace(' ', 'T').slice(0, 19)}Z`,
-    }));
+    .filter((i) => UPPTAGET.includes(i.status))
+    .map((i) => {
+      for (const punkt of [i.start, i.end]) {
+        const zon = String(punkt?.timeZone || '').toUpperCase();
+        if (zon && zon !== 'UTC') {
+          throw new Error(
+            `Graph svarade med tidszonen "${punkt.timeZone}" i stället för UTC. ` +
+              'Tiderna kan inte tolkas säkert och ledig/upptaget hoppas över.'
+          );
+        }
+      }
+      return {
+        start: `${i.start.dateTime.replace(' ', 'T').slice(0, 19)}Z`,
+        end: `${i.end.dateTime.replace(' ', 'T').slice(0, 19)}Z`,
+      };
+    });
 }
 
 /** Skapar mötet i värdens kalender med bokaren som deltagare. M365 skickar inbjudan. */
@@ -218,4 +271,4 @@ async function calendarUsable(accessToken) {
   }
 }
 
-module.exports = { SCOPES, isConfigured, calendarUsable, createHold, deleteEvent, config, authorizeUrl, exchangeCode, refresh, me, busyIntervals, createEvent, cancelEvent, call };
+module.exports = { SCOPES, isConfigured, calendarUsable, createHold, deleteEvent, tolkaSchema, config, authorizeUrl, exchangeCode, refresh, me, busyIntervals, createEvent, cancelEvent, call };
