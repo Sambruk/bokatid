@@ -7,6 +7,8 @@ const path = require('path');
 const { q, audit } = require('./db');
 const { hashPassword, randomToken } = require('./crypto');
 const { tema } = require('./farg');
+const feedSync = require('./feed-sync');
+const { kontrolleraAdress } = require('./ics-feed');
 
 const MEDIA = path.join(__dirname, '..', 'media');
 const LOGO_MAX_BYTES = 1_536_000; // 1500 kB jämnt, så beskedet till användaren blir ett helt tal
@@ -63,6 +65,7 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     const admin = req.user.role === 'admin';
     const { rows } = await q(
       `SELECT u.id, u.name, u.slug, u.title, u.email, u.role, u.active, u.created_via, u.created_at,
+              u.organisation, u.feed_url, u.feed_error, u.feed_checked_at,
               (SELECT count(*) FROM ms_accounts m WHERE m.user_id = u.id) > 0 AS kalender,
               (SELECT count(*) FROM event_types e WHERE e.user_id = u.id AND e.active) AS tjanster
        FROM users u ORDER BY u.active DESC, u.name`
@@ -76,10 +79,17 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
         title: u.title,
         active: u.active,
         kalender: u.kalender,
+        organisation: u.organisation,
+        // Prenumerationen är inte hemlig för kollegorna, men adressen är en
+        // nyckel till kalendern och lämnas bara ut till superadmin.
+        prenumeration: u.feed_url
+          ? { aktiv: true, fel: u.feed_error, hamtad: u.feed_checked_at }
+          : null,
         ...(admin
           ? {
               email: u.email,
               role: u.role,
+              feed_url: u.feed_url,
               created_via: u.created_via,
               created_at: u.created_at,
               tjanster: Number(u.tjanster),
@@ -97,16 +107,24 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     if (!isEmail(email)) return bad(res, 400, 'Ange en giltig e-postadress');
     if (!slug) return bad(res, 400, 'Ange ett kortnamn för bokningsadressen');
 
-    const role = req.body?.role === 'admin' ? 'admin' : 'host';
+    const role = ['admin', 'extern'].includes(req.body?.role) ? req.body.role : 'host';
     // Ett lösenord är valfritt: den som loggar in med Microsoft behöver inget.
     const losenord = str(req.body?.password, 200);
     if (losenord && losenord.length < 12) return bad(res, 400, 'Lösenordet måste vara minst 12 tecken');
 
     try {
       const { rows } = await q(
-        `INSERT INTO users (slug, name, email, title, role, password_hash, created_via)
-         VALUES ($1,$2,$3,$4,$5,$6,'admin') RETURNING id, slug`,
-        [slug, name, email, str(req.body?.title, 160) || null, role, losenord ? hashPassword(losenord) : null]
+        `INSERT INTO users (slug, name, email, title, role, password_hash, created_via, organisation)
+         VALUES ($1,$2,$3,$4,$5,$6,'admin',$7) RETURNING id, slug`,
+        [
+          slug,
+          name,
+          email,
+          str(req.body?.title, 160) || null,
+          role,
+          losenord ? hashPassword(losenord) : null,
+          str(req.body?.organisation, 160) || null,
+        ]
       );
       const userId = rows[0].id;
 
@@ -136,7 +154,7 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     if (!fanns[0]) return bad(res, 404, 'Användaren finns inte');
 
     const aktiv = req.body?.active !== false;
-    const role = req.body?.role === 'admin' ? 'admin' : 'host';
+    const role = ['admin', 'extern'].includes(req.body?.role) ? req.body.role : 'host';
 
     // Spärr mot utelåsning: den sista superadminen får inte tas bort eller
     // degraderas, och ingen kan avaktivera sig själv.
@@ -163,7 +181,8 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
 
     try {
       const { rows } = await q(
-        `UPDATE users SET name = $2, title = $3, slug = $4, role = $5, active = $6, email = $7
+        `UPDATE users SET name = $2, title = $3, slug = $4, role = $5, active = $6, email = $7,
+           organisation = $8
          WHERE id = $1 RETURNING id, name, slug, role, active, email`,
         [
           id,
@@ -173,6 +192,7 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
           role,
           aktiv,
           epost,
+          str(req.body?.organisation, 160) || null,
         ]
       );
 
@@ -207,6 +227,59 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     await audit(req.user.email, 'user_password_set', { userId: id });
     // Lösenordet visas en gång för superadmin att lämna vidare.
     res.json({ ok: true, password: nytt });
+  });
+
+  /* ---------- kalenderprenumeration ---------- */
+
+  /**
+   * Sparar en ICS-adress och läser in den direkt, så att den som klistrar in
+   * länken får veta på en gång om den fungerar. Adressen kontrolleras mot
+   * interna nät innan något hämtas.
+   */
+  async function sparaPrenumeration(res, user, url, actor) {
+    if (!url) {
+      await q('UPDATE users SET feed_url = NULL, feed_error = NULL, feed_checked_at = NULL WHERE id = $1', [user.id]);
+      await q('DELETE FROM feed_busy WHERE user_id = $1', [user.id]);
+      await audit(actor, 'prenumeration_borttagen', { userId: user.id });
+      return res.json({ ok: true, prenumeration: null });
+    }
+
+    try {
+      await kontrolleraAdress(url.replace(/^webcal:\/\//i, 'https://'));
+    } catch (err) {
+      return bad(res, 400, err.message);
+    }
+
+    await q('UPDATE users SET feed_url = $2, feed_error = NULL, feed_checked_at = NULL WHERE id = $1', [
+      user.id,
+      url,
+    ]);
+    const resultat = await feedSync.uppdatera({ ...user, feed_url: url });
+    await audit(actor, 'prenumeration_sparad', { userId: user.id, ok: resultat.ok, antal: resultat.antal });
+
+    if (!resultat.ok) {
+      return bad(res, 502, `Adressen sparades, men kalendern kunde inte läsas: ${resultat.skal}`);
+    }
+    res.json({ ok: true, antalTider: resultat.antal });
+  }
+
+  router.post('/api/admin/min-kalenderlank', requireAuth, async (req, res) => {
+    await sparaPrenumeration(res, req.user, str(req.body?.url, 1000), req.user.email);
+  });
+
+  router.post('/api/admin/users/:id/kalenderlank', requireAuth, requireAdmin, async (req, res) => {
+    const { rows } = await q('SELECT * FROM users WHERE id = $1', [int(req.params.id)]);
+    if (!rows[0]) return bad(res, 404, 'Användaren finns inte');
+    await sparaPrenumeration(res, rows[0], str(req.body?.url, 1000), req.user.email);
+  });
+
+  /** Läser om en prenumeration på begäran, för att se att den fortfarande går. */
+  router.post('/api/admin/users/:id/kalenderlank/uppdatera', requireAuth, requireAdmin, async (req, res) => {
+    const { rows } = await q('SELECT * FROM users WHERE id = $1', [int(req.params.id)]);
+    if (!rows[0]) return bad(res, 404, 'Användaren finns inte');
+    if (!rows[0].feed_url) return bad(res, 409, 'Användaren har ingen prenumeration');
+    const resultat = await feedSync.uppdatera(rows[0]);
+    res.json({ ok: resultat.ok, antalTider: resultat.antal, fel: resultat.skal });
   });
 
   /* ---------- organisation ---------- */

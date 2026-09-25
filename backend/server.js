@@ -12,6 +12,7 @@ const { encrypt, decrypt, verifyPassword, hashPassword, randomToken, hashToken, 
 const graph = require('./lib/graph');
 const mail = require('./lib/mail');
 const { gallra, startaGallring, inställningar: gallringInst } = require('./lib/gallring');
+const feedSync = require('./lib/feed-sync');
 
 const PORT = Number(process.env.PORT || 3000);
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
@@ -176,6 +177,18 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
   );
   busy.push(...pollRader.map((r) => ({ start: r.start, end: r.end })));
 
+  /*
+   * En extern part delar sina tider genom en prenumeration i stället för en
+   * kalenderkoppling. Tiderna är redan inlästa och sparade — sidan ska inte
+   * vänta på någon annans server.
+   */
+  if (user.feed_url) {
+    busy.push(...(await feedSync.sparadeTider(user.id, fromIso, toIso)));
+    // En prenumeration som aldrig gått att läsa räknas inte som kontrollerad.
+    const kontrollerad = Boolean(user.feed_checked_at) && !user.feed_error;
+    return { busy, calendarChecked: kontrollerad };
+  }
+
   const auth = await accessTokenFor(user.id);
   if (auth) {
     try {
@@ -200,7 +213,8 @@ async function loadSchedule(user) {
 async function findHostAndEvent(hostSlug, eventSlug) {
   const { rows } = await q(
     `SELECT e.*, u.id AS host_id, u.name AS host_name, u.email AS host_email,
-            u.title AS host_title, u.slug AS host_slug, u.timezone
+            u.title AS host_title, u.slug AS host_slug, u.timezone,
+            u.feed_url, u.feed_checked_at, u.feed_error
      FROM event_types e JOIN users u ON u.id = e.user_id
      WHERE u.slug = $1 AND e.slug = $2 AND e.active AND u.active`,
     [hostSlug, eventSlug]
@@ -214,6 +228,9 @@ async function findHostAndEvent(hostSlug, eventSlug) {
     title: r.host_title,
     slug: r.host_slug,
     timezone: r.timezone,
+    feed_url: r.feed_url,
+    feed_checked_at: r.feed_checked_at,
+    feed_error: r.feed_error,
   };
   return { host, eventType: r, hosts: await hostsFor(r.id, host) };
 }
@@ -225,7 +242,7 @@ async function findHostAndEvent(hostSlug, eventSlug) {
  */
 async function hostsFor(eventTypeId, owner) {
   const { rows } = await q(
-    `SELECT u.id, u.name, u.email, u.title, u.slug, u.timezone
+    `SELECT u.id, u.name, u.email, u.title, u.slug, u.timezone, u.feed_url, u.feed_checked_at, u.feed_error
      FROM event_type_hosts h JOIN users u ON u.id = h.user_id
      WHERE h.event_type_id = $1 AND u.active AND u.id <> $2
      ORDER BY u.name`,
@@ -450,6 +467,7 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
 
   // Varje värd måste vara ledig. Räcker det inte för en av dem är tiden borta.
   for (const enHost of found.hosts) {
+    if (enHost.feed_url) await feedSync.uppdateraOmGammal(enHost, 2);
     const { rules, overrides } = await loadSchedule(enHost);
     const { busy } = await busyFor(enHost, fromIso, toIso);
     const ok = isSlotAvailable({ timezone: tz, rules, overrides, eventType, busy }, start.toUTC().toISO());
@@ -1337,6 +1355,7 @@ app.use((err, req, res, next) => {
   await applySchema();
   await seed();
   startaGallring();
+  feedSync.startaFeedSync();
 
   // Städa bort utgångna sessioner och oauth-tillstånd en gång i timmen.
   setInterval(() => {

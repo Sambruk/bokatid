@@ -105,7 +105,8 @@ och kostar en timme att hitta.
 
 ## Organisation och roller
 
-Två roller: **användare** (`host`) och **superadmin** (`admin`). En användare
+Tre roller: **användare** (`host`), **superadmin** (`admin`) och **extern part**
+(`extern`) — leverantörer och samverkansparter utanför organisationen. En användare
 sköter sina egna bokningstjänster, tider och omröstningar. Superadmin lägger
 dessutom upp konton, sätter roller, stänger av konton och bestämmer
 organisationens utseende.
@@ -147,6 +148,35 @@ Organisationens namn, logotyp och webbadress visas i sidhuvudet på varje publik
 sida: bokningssidor, avbokning och omröstningar. Logotypen kontrolleras på sitt
 faktiska innehåll (magiska byte), inte på filändelsen, och bara PNG, JPEG och
 WebP tas emot — en SVG kan bära skript och serveras här från samma ursprung.
+
+### Externa parter och kalenderprenumeration
+
+En extern part har inget konto i organisationens Microsoft 365 och ska inte heller
+ha det. I stället delar de en **läsbar kalenderlänk** (ICS) ur Outlook, Google eller
+Nextcloud, och tjänsten prenumererar på den. Läsning är allt som är möjligt:
+tjänsten kan aldrig skriva i deras kalender, och det är en egenskap hos
+konstruktionen, inte en inställning som kan råka ändras.
+
+Deras upptagna tider räknas in precis som en intern kalender. Bokas ett möte skapas
+det i den interna värdens kalender, och den externa parten bjuds in som deltagare —
+de får alltså en vanlig kalenderinbjudan att tacka ja till.
+
+Tre saker som gör funktionen tillförlitlig i stället för farlig:
+
+- **Återkommande möten vecklas ut.** Ett veckomöte som inte expanderas skulle visa
+  bokade tider som lediga. Tidszoner, undantag (EXDATE) och ändrade enstaka
+  förekomster hanteras, och allt täcks av enhetstester.
+- **Tiderna sparas i databasen.** Går leverantörens server inte att nå används det
+  senast kända i stället för att deras bokade tider plötsligt visas som lediga.
+  Vid en bokning läses kalendern om, eftersom en bokning är sällsynt och får kosta
+  några sekunder.
+- **Adressen kontrolleras mot interna nät** innan något hämtas, även vid
+  omdirigeringar. Annars hade fältet kunnat användas för att nå tjänster som bara
+  är åtkomliga inifrån servern.
+
+Tider märkta som lediga i kalendern (`TRANSP:TRANSPARENT` eller Outlooks
+busystatus `FREE`) blockerar ingenting — den som satt "ledig" menar att tiden går
+att boka.
 
 ### Färgtemat och kontrast
 

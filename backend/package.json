@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "ical.js": "^2.2.1",
     "luxon": "^3.4.4",
     "nodemailer": "^10.0.10",
     "pg": "^8.11.5"

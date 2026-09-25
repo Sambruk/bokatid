@@ -278,3 +278,31 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_file TEXT;
 -- Egen rubrik och ingress på den publika översikten.
 ALTER TABLE organization ADD COLUMN IF NOT EXISTS intro_rubrik TEXT;
 ALTER TABLE organization ADD COLUMN IF NOT EXISTS intro_text TEXT;
+
+-- ---------------------------------------------------------------------------
+-- Externa användare: leverantörer och samverkansparter utanför organisationen.
+-- De delar sina upptagna tider genom en ICS-länk som tjänsten prenumererar på.
+-- Läsning är allt som är möjligt — tjänsten kan aldrig skriva i deras kalender.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('host', 'admin', 'extern'));
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_error TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_checked_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS organisation TEXT;
+
+-- Senast inlästa upptagna tider från en prenumeration. Sparas i databasen så att
+-- ett tillfälligt fel på leverantörens sida inte öppnar upp tider som är bokade:
+-- då används det senast kända i stället.
+CREATE TABLE IF NOT EXISTS feed_busy (
+  id        BIGSERIAL PRIMARY KEY,
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_utc TIMESTAMPTZ NOT NULL,
+  end_utc   TIMESTAMPTZ NOT NULL,
+  hamtad_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS feed_busy_user_span ON feed_busy (user_id, start_utc, end_utc);

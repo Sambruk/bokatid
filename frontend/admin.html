@@ -275,6 +275,20 @@
           </p>
         </div>
 
+        <h2>Kalenderlänk</h2>
+        <p class="meta">Har du ingen Microsoft-koppling kan du i stället dela en läsbar
+           kalenderlänk (ICS) ur Outlook, Google eller Nextcloud. Tjänsten läser bara dina
+           upptagna tider och kan aldrig skriva i din kalender.</p>
+        <form id="feedForm" class="kort">
+          <label for="minFeed">Adress till kalendern</label>
+          <input id="minFeed" type="url" placeholder="https://...">
+          <p class="hjalptext hjalptext--under" id="minFeedStatus"></p>
+          <p class="rad rad--knappar">
+            <button type="submit">Spara och läs in</button>
+            <button type="button" class="knapp--fara" id="taBortFeed" hidden>Ta bort länken</button>
+          </p>
+        </form>
+
         <h2>Gallring av personuppgifter</h2>
         <div id="gallringStatus"></div>
         <p class="rad rad--knappar">
@@ -311,8 +325,21 @@
             <span><label for="aTitel">Titel <span class="hjalptext">(frivilligt)</span></label><input id="aTitel"></span>
             <span><label for="aSlug">Kortnamn i länken <span class="hjalptext">(tomt = ur adressen)</span></label><input id="aSlug"></span>
             <span><label for="aRoll">Roll</label>
-              <select id="aRoll"><option value="host">Användare</option><option value="admin">Superadmin</option></select></span>
+              <select id="aRoll">
+                <option value="host">Användare</option>
+                <option value="admin">Superadmin</option>
+                <option value="extern">Extern part</option>
+              </select></span>
           </div>
+          <div class="rad" id="aExternRad" hidden>
+            <span><label for="aOrganisation">Organisation <span class="hjalptext">(visas publikt)</span></label>
+              <input id="aOrganisation" placeholder="t.ex. Leverantören AB"></span>
+            <span><label for="aFeed">Länk till kalender (ICS)
+              <span class="hjalptext">(läses, skrivs aldrig)</span></label>
+              <input id="aFeed" type="url" placeholder="https://..."></span>
+          </div>
+          <p class="hjalptext hjalptext--under" id="aFeedHjalp"></p>
+
           <p id="aStatusRad" hidden><label><input type="checkbox" id="aAktiv" checked> Aktiv — kan logga in och bokas</label></p>
           <div class="rad">
             <span><label for="aLosen">Lösenord <span class="hjalptext">(frivilligt, minst 12 tecken)</span></label>
@@ -1511,8 +1538,18 @@
       tr.insertCell().textContent = u.name + (u.title ? `, ${u.title}` : '');
       tr.insertCell().textContent = u.email || '';
       tr.insertCell().textContent = u.slug;
-      tr.insertCell().textContent = u.role === 'admin' ? 'Superadmin' : 'Användare';
-      tr.insertCell().textContent = u.kalender ? 'Kopplad' : '–';
+      const ROLLTEXT = { admin: 'Superadmin', extern: 'Extern part', host: 'Användare' };
+      tr.insertCell().textContent = ROLLTEXT[u.role] || u.role;
+      const kal = tr.insertCell();
+      if (u.prenumeration) {
+        kal.textContent = u.prenumeration.fel ? 'Prenumeration: fel' : 'Prenumeration';
+        if (u.prenumeration.fel) {
+          kal.title = u.prenumeration.fel;
+          kal.style.color = 'var(--fel)';
+        }
+      } else {
+        kal.textContent = u.kalender ? 'Kopplad' : '–';
+      }
       tr.insertCell().textContent = u.active ? 'Aktiv' : 'Avstängd';
 
       const atgarder = tr.insertCell();
@@ -1548,6 +1585,9 @@
     document.getElementById('aTitel').value = u ? u.title || '' : '';
     document.getElementById('aSlug').value = u ? u.slug : '';
     document.getElementById('aRoll').value = u ? u.role : 'host';
+    document.getElementById('aOrganisation').value = u ? u.organisation || '' : '';
+    document.getElementById('aFeed').value = u ? u.feed_url || '' : '';
+    visaExternFalt();
     document.getElementById('aAktiv').checked = u ? u.active : true;
     const losenFalt = document.getElementById('aLosen');
     losenFalt.value = '';
@@ -1577,6 +1617,17 @@
 
   document.getElementById('aAvbryt').addEventListener('click', () => fyllAnvandarFormular(null));
 
+  /** Fälten för extern part visas bara när rollen är det. */
+  function visaExternFalt() {
+    const extern = document.getElementById('aRoll').value === 'extern';
+    document.getElementById('aExternRad').hidden = !extern;
+    document.getElementById('aFeedHjalp').textContent = extern
+      ? 'Den externa parten delar en läsbar kalenderlänk ur Outlook, Google eller Nextcloud. ' +
+        'Tjänsten läser bara upptagna tider och kan aldrig skriva i deras kalender.'
+      : '';
+  }
+  document.getElementById('aRoll').addEventListener('change', visaExternFalt);
+
   document.getElementById('aSlumpa').addEventListener('click', () => {
     const tecken = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const slump = crypto.getRandomValues(new Uint32Array(16));
@@ -1595,7 +1646,9 @@
       title: document.getElementById('aTitel').value,
       slug: document.getElementById('aSlug').value,
       role: document.getElementById('aRoll').value,
+      organisation: document.getElementById('aOrganisation').value,
     };
+    const feedUrl = document.getElementById('aFeed').value.trim();
     const knapp = document.getElementById('aSpara');
     knapp.disabled = true;
     try {
@@ -1618,10 +1671,18 @@
           await skicka(`${bas}/api/admin/users/${id}/password`, { password: losen });
           delar.push('Lösenordet är satt och personen är utloggad från tidigare sessioner.');
         }
+        if (feedUrl !== (anvandare.find((x) => x.id === Number(id))?.feed_url || '')) {
+          const svarFeed = await skicka(`${bas}/api/admin/users/${id}/kalenderlank`, { url: feedUrl });
+          delar.push(feedUrl ? `Kalenderlänken lästes in: ${svarFeed.antalTider} upptagna tider.` : 'Kalenderlänken är borttagen.');
+        }
         notis(meddelande, delar.join(' '), 'ok');
       } else {
         if (losen) kropp.password = losen;
         const r = await skicka(`${bas}/api/admin/users`, kropp);
+        if (feedUrl) {
+          const svarFeed = await skicka(`${bas}/api/admin/users/${r.id}/kalenderlank`, { url: feedUrl });
+          notis(meddelande, `Kalenderlänken lästes in: ${svarFeed.antalTider} upptagna tider.`, 'ok');
+        }
         notis(
           meddelande,
           `Användaren är upplagd${losen ? ' med det angivna lösenordet' : ''}. ` +
@@ -1875,6 +1936,46 @@
     notis(meddelande, 'Fotot är borttaget.', 'ok');
   });
 
+  /* ---- egen kalenderlänk ---- */
+
+  function visaMinFeed() {
+    const mig = anvandare.find((u) => u.id === jag.user.id);
+    const status = document.getElementById('minFeedStatus');
+    document.getElementById('taBortFeed').hidden = !mig?.prenumeration;
+    if (!mig?.prenumeration) {
+      status.textContent = jag.m365.connected
+        ? 'Du har en Microsoft-koppling, så någon kalenderlänk behövs inte.'
+        : 'Ingen kalenderlänk sparad — dina upptagna tider läses inte in.';
+      return;
+    }
+    status.textContent = mig.prenumeration.fel
+      ? `Senaste inläsningen misslyckades: ${mig.prenumeration.fel}`
+      : `Inläst ${new Date(mig.prenumeration.hamtad).toLocaleString('sv-SE')}.`;
+  }
+
+  document.getElementById('feedForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try {
+      const r = await skicka(`${bas}/api/admin/min-kalenderlank`, {
+        url: document.getElementById('minFeed').value.trim(),
+      });
+      notis(meddelande, `Kalendern lästes in: ${r.antalTider} upptagna tider.`, 'ok');
+      await laddaAnvandare();
+      visaMinFeed();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  document.getElementById('taBortFeed').addEventListener('click', async () => {
+    if (!confirm('Ta bort kalenderlänken? Dina upptagna tider läses då inte längre in.')) return;
+    await skicka(`${bas}/api/admin/min-kalenderlank`, { url: '' });
+    document.getElementById('minFeed').value = '';
+    notis(meddelande, 'Kalenderlänken är borttagen.', 'ok');
+    await laddaAnvandare();
+    visaMinFeed();
+  });
+
   /* ---- uppstart ---- */
   async function start() {
     try {
@@ -1914,6 +2015,7 @@
 
     visaMittFoto();
     await laddaAnvandare();
+    visaMinFeed();
     if (jag.user.role === 'admin') {
       document.getElementById('flik-anvandare').hidden = false;
       document.getElementById('flik-organisation').hidden = false;
