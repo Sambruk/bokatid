@@ -628,7 +628,7 @@ router.post('/api/login', async (req, res) => {
   }
   await startSession(res, user);
   await audit(user.email, 'login_ok', { via: 'losenord' });
-  res.json({ ok: true, user: { name: user.name, email: user.email, slug: user.slug } });
+  res.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, slug: user.slug } });
 });
 
 router.post('/api/logout', async (req, res) => {
@@ -653,7 +653,16 @@ router.get('/api/me', async (req, res) => {
     [user.id]
   );
   res.json({
-    user: { name: user.name, email: user.email, slug: user.slug, role: user.role, timezone: user.timezone },
+    // id behövs för att gränssnittet ska kunna skilja ut den egna användaren:
+    // utan det visas man själv i listan över kollegor att lägga till.
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      slug: user.slug,
+      role: user.role,
+      timezone: user.timezone,
+    },
     publicUrl: `${PUBLIC_URL}/${user.slug}`,
     m365: {
       configured: graph.isConfigured(),

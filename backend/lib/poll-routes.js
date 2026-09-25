@@ -767,9 +767,37 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     if (!sparade) return bad(res, 400, 'Svara på minst en tid');
 
     await q('UPDATE poll_participants SET responded_at = now() WHERE id = $1', [deltagare.id]);
-    await audit(email, 'poll_voted', { pollId: poll.id, antalSvar: sparade });
 
-    res.json({ ok: true, sparade, svarUrl: `${pollUrl(poll.public_token)}?svar=${deltagare.token}` });
+    // Kvitto med de valda tiderna och en kalenderfil för preliminärbokning.
+    const { publikOrganisation } = require('./admin-routes');
+    const org = await publikOrganisation().catch(() => ({}));
+    const val = poll.options
+      .filter((o) => svar[o.id])
+      .map((o) => ({ option: o, answer: svar[o.id] }))
+      .sort((a, b) => new Date(a.option.start_utc) - new Date(b.option.start_utc));
+
+    const kvitto = await mail.sendPollVoteReceipt({
+      poll,
+      host: { name: poll.host_name, email: poll.host_email },
+      participant: deltagare,
+      val,
+      kanskeText: org.kanskeText || 'Om jag måste',
+      url: `${pollUrl(poll.public_token)}?svar=${deltagare.token}`,
+    });
+
+    await audit(email, 'poll_voted', {
+      pollId: poll.id,
+      antalSvar: sparade,
+      kvittoSkickat: kvitto.sent,
+      reserverade: kvitto.reserverade || 0,
+    });
+
+    res.json({
+      ok: true,
+      sparade,
+      kvittoSkickat: kvitto.sent,
+      svarUrl: `${pollUrl(poll.public_token)}?svar=${deltagare.token}`,
+    });
   });
 
   return { syncHolds, releaseHolds };

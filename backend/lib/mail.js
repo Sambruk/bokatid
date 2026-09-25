@@ -242,6 +242,100 @@ async function sendPollInvitation({ poll, host, participant, url, options }) {
 }
 
 /**
+ * Kvitto till den som svarat: vilka tider hen valde, och en kalenderfil som
+ * lägger in dem som PRELIMINÄRA i den egna kalendern. Metoden är PUBLISH och
+ * inte REQUEST — det här är inte en inbjudan utan deltagarens egen reservation,
+ * och tiden är ännu inte bestämd.
+ */
+async function sendPollVoteReceipt({ poll, host, participant, val, kanskeText = 'Om jag måste', url }) {
+  const tp = transport();
+  if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
+
+  const etikett = { ja: 'Ja', kanske: kanskeText, nej: 'Nej' };
+  const rader = val
+    .map((v) => `<tr><td>${esc(tidRad(v.option))}</td><td>${esc(etikett[v.answer] || v.answer)}</td></tr>`)
+    .join('');
+
+  // Bara tider deltagaren kan komma på reserveras — ett nej ska inte hamna i
+  // kalendern.
+  const attReservera = val.filter((v) => v.answer !== 'nej').map((v) => v.option);
+  const ics = attReservera.length ? buildTentativeIcs({ poll, host, participant, options: attReservera }) : null;
+
+  const html = `
+    <p>Hej ${esc(participant.name)},</p>
+    <p>Tack för ditt svar om tid för <strong>${esc(poll.title)}</strong>. Så här svarade du:</p>
+    <table cellpadding="4" border="0">
+      <tr><th align="left">Tid</th><th align="left">Ditt svar</th></tr>
+      ${rader}
+    </table>
+    ${
+      ics
+        ? `<p>Bifogat ligger en kalenderfil med de tider du kan. Öppna den om du vill
+           lägga in dem som <strong>preliminära</strong> i din egen kalender, så att ingen
+           annan bokar dem under tiden. Den som inte blir av tar du bort själv.</p>`
+        : ''
+    }
+    <p>Vill du ändra ditt svar går det bra fram till att tiden bestäms:<br>
+       <a href="${esc(url)}">${esc(url)}</a></p>
+    <p>Du får besked när tiden är bestämd.</p>
+    <p>Hälsningar<br>${esc(host.name)} via Sambruk</p>`;
+
+  try {
+    await tp.sendMail({
+      from: sender(),
+      to: `"${participant.name}" <${participant.email}>`,
+      subject: `Ditt svar om tid: ${poll.title}`,
+      html,
+      ...(ics
+        ? {
+            attachments: [
+              {
+                filename: 'preliminara-tider.ics',
+                content: ics,
+                contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
+              },
+            ],
+          }
+        : {}),
+    });
+    return { sent: true, reserverade: attReservera.length };
+  } catch (err) {
+    return { sent: false, errors: [String(err.message)] };
+  }
+}
+
+/** En kalenderfil med flera preliminära poster, en per vald tid. */
+function buildTentativeIcs({ poll, host, participant, options }) {
+  const rader = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Sambruk//Boka tid//SV',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+  ];
+  for (const o of options) {
+    rader.push(
+      'BEGIN:VEVENT',
+      `UID:poll-${poll.id}-opt-${o.id}-p${participant.id}@boka.sambruk.se`,
+      `DTSTAMP:${icsStamp(new Date().toISOString())}`,
+      `DTSTART:${icsStamp(o.start_utc)}`,
+      `DTEND:${icsStamp(o.end_utc)}`,
+      `SUMMARY:${icsText('Preliminär: ' + poll.title)}`,
+      `DESCRIPTION:${icsText(
+        `Föreslagen tid i en omröstning från ${host.name}. Tiden är inte bestämd ännu.`
+      )}`,
+      'STATUS:TENTATIVE',
+      // Outlook och Google läser olika fält för "preliminär".
+      'X-MICROSOFT-CDO-BUSYSTATUS:TENTATIVE',
+      'TRANSP:OPAQUE',
+      'END:VEVENT'
+    );
+  }
+  rader.push('END:VCALENDAR');
+  return rader.join('\r\n');
+}
+
+/**
  * Besked om att tiden är beslutad. Skapades mötet i värdens kalender skickar
  * Outlook den riktiga inbjudan till deltagarna, och då bifogas ingen egen
  * kalenderfil här.
@@ -342,6 +436,8 @@ function answersHtml(answers) {
 
 module.exports = {
   sendPasswordReset,
+  sendPollVoteReceipt,
+  buildTentativeIcs,
   sendBookingMails,
   sendCancellationMails,
   sendPollInvitation,

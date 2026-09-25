@@ -321,7 +321,8 @@
 
         <form id="orgForm" class="kort">
           <div class="rad">
-            <span><label for="oOrgNamn">Namn</label><input id="oOrgNamn" placeholder="t.ex. Sambruk"></span>
+            <span><label for="oOrgNamn">Text i sidhuvudet</label>
+              <input id="oOrgNamn" placeholder="t.ex. Sambruk"></span>
             <span><label for="oOrgWebb">Webbadress</label>
               <input id="oOrgWebb" type="url" placeholder="https://sambruk.se"></span>
           </div>
@@ -332,6 +333,10 @@
               <input id="oOrgFargText" placeholder="#58A618" spellcheck="false"></span>
           </div>
           <div id="kontrastBesked" aria-live="polite"></div>
+
+          <label for="oOrgKanske">Svarsalternativet mellan ja och nej
+            <span class="hjalptext">(i omröstningar, standard "Om jag måste")</span></label>
+          <input id="oOrgKanske" maxlength="40" placeholder="Om jag måste">
           <p class="rad rad--knappar"><button type="submit">Spara</button></p>
         </form>
 
@@ -349,7 +354,7 @@
   </div>
 </main>
 
-<footer><div class="omslag omslag--bred">Sambruk — öppen källkod</div></footer>
+<footer><div class="omslag omslag--bred">Öppen källkod · <a href="https://github.com/Sambruk/bokatid">github.com/Sambruk/bokatid</a></div></footer>
 
 <script src="js/gemensamt.js"></script>
 <script>
@@ -881,6 +886,7 @@
 
   /* ---- omröstningar ---- */
 
+  // Mellanalternativets text sätts av organisationen; hämtas vid start.
   const SVARSTEXT = { ja: 'Ja', kanske: 'Om jag måste', nej: 'Nej' };
   const STATUSTEXT = { open: 'Öppen', closed: 'Stängd', decided: 'Beslutad', cancelled: 'Avbruten' };
   let valdaTider = new Set();
@@ -1200,7 +1206,7 @@
     const tabell = document.createElement('table');
     const thead = tabell.createTHead();
     const rubrikRad = thead.insertRow();
-    for (const text of ['Tid', 'Ja', 'Om jag måste', 'Nej', 'Reserverad']) {
+    for (const text of ['Tid', 'Ja', SVARSTEXT.kanske, 'Nej', 'Reserverad']) {
       const th = document.createElement('th');
       th.scope = 'col';
       th.textContent = text;
@@ -1660,6 +1666,7 @@
     }
     document.getElementById('oOrgNamn').value = o.name || '';
     document.getElementById('oOrgWebb').value = o.website_url || '';
+    document.getElementById('oOrgKanske').value = o.poll_maybe_label || '';
     if (o.theme_color) {
       document.getElementById('oOrgFarg').value = o.theme_color;
       document.getElementById('oOrgFargText').value = o.theme_color;
@@ -1716,6 +1723,7 @@
         name: document.getElementById('oOrgNamn').value,
         website_url: document.getElementById('oOrgWebb').value,
         theme_color: document.getElementById('oOrgFargText').value || document.getElementById('oOrgFarg').value,
+        poll_maybe_label: document.getElementById('oOrgKanske').value,
       }, 'PUT');
       visaKontrast(r.tema);
       notis(meddelande, 'Organisationen är sparad. Ladda om en publik sida för att se den.', 'ok');
@@ -1824,6 +1832,9 @@
     const publik = document.getElementById('publikLank');
     publik.href = `${bas}/${jag.user.slug}`;
     publik.textContent = 'Din publika bokningssida';
+
+    const org = await visaOrganisation(bas);
+    if (org?.kanskeText) SVARSTEXT.kanske = org.kanskeText;
 
     await laddaAnvandare();
     if (jag.user.role === 'admin') {

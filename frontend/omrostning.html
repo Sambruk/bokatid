@@ -71,7 +71,7 @@
   </div>
 </main>
 
-<footer><div class="omslag omslag--bred">Sambruk — öppen källkod</div></footer>
+<footer><div class="omslag omslag--bred">Öppen källkod · <a href="https://github.com/Sambruk/bokatid">github.com/Sambruk/bokatid</a></div></footer>
 
 <script src="../js/gemensamt.js"></script>
 <script>
@@ -81,13 +81,14 @@
   const bas = basvag(2);
   const svarToken = new URLSearchParams(location.search).get('svar') || '';
   visaIdag(document.getElementById('idag'));
-  await visaOrganisation(bas);
+  const org = await visaOrganisation(bas);
 
   const meddelande = document.getElementById('notis');
   const formular = document.getElementById('formular');
   const tiderEl = document.getElementById('tider');
 
-  const SVARSTEXT = { ja: 'Ja', kanske: 'Om jag måste', nej: 'Nej' };
+  // Mellanalternativets text bestäms av organisationen.
+  const SVARSTEXT = { ja: 'Ja', kanske: org?.kanskeText || 'Om jag måste', nej: 'Nej' };
 
   let data;
   try {
@@ -154,7 +155,7 @@
     rakning.className = 'meta';
     rakning.style.margin = '0 0 0.5rem';
     rakning.textContent =
-      `Hittills: ${tid.rakning.ja} ja, ${tid.rakning.kanske} om jag måste, ${tid.rakning.nej} nej`;
+      `Hittills: ${tid.rakning.ja} ja, ${tid.rakning.kanske} ${SVARSTEXT.kanske.toLowerCase()}, ${tid.rakning.nej} nej`;
     grupp.append(rakning);
 
     const val = document.createElement('div');
@@ -228,14 +229,20 @@
     knapp.disabled = true;
     rensaNotis(meddelande);
     try {
-      await skicka(`${bas}/api/poll/${encodeURIComponent(token)}/vote`, {
+      const svar = await skicka(`${bas}/api/poll/${encodeURIComponent(token)}/vote`, {
         svarToken,
         name: document.getElementById('namn').value,
         email: document.getElementById('epost').value,
         org: document.getElementById('org').value,
         svar,
       });
-      notis(meddelande, 'Tack! Ditt svar är sparat. Du får besked via e-post när tiden är bestämd.', 'ok');
+      notis(
+        meddelande,
+        svar.kvittoSkickat
+          ? 'Tack! Ditt svar är sparat. Du får ett mejl med tiderna du valde och en kalenderfil för att lägga in dem preliminärt.'
+          : 'Tack! Ditt svar är sparat. Du får besked när tiden är bestämd.',
+        'ok'
+      );
       formular.hidden = true;
       document.getElementById('rubrik').scrollIntoView({ block: 'start' });
     } catch (err) {

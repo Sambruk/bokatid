@@ -267,3 +267,6 @@ CREATE TABLE IF NOT EXISTS password_resets (
 );
 
 CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets (user_id);
+
+-- Egen text på svarsalternativet "Om jag måste" i omröstningar.
+ALTER TABLE organization ADD COLUMN IF NOT EXISTS poll_maybe_label TEXT;
