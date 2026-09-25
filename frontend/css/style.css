@@ -158,6 +158,19 @@ a:hover { color: var(--gron-mork); }
 .person__namn { font-weight: 600; color: var(--gron); }
 .person__titel { color: var(--text-svag); font-size: 0.9rem; }
 
+/* Personsidans huvud: samma runda bild som på översikten, bredvid namnet. */
+.vard { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1.5rem; }
+.vard h1 { margin: 0; }
+.vard .person__bild { width: 5.5rem; height: 5.5rem; }
+.vard .person__initialer { font-size: 1.6rem; }
+.vard .meta { margin: 0.2rem 0 0; }
+
+@media (max-width: 560px) {
+  .vard { gap: 0.9rem; }
+  .vard .person__bild { width: 4.25rem; height: 4.25rem; }
+  .vard .person__initialer { font-size: 1.25rem; }
+}
+
 /* Tider */
 .dagar { display: grid; gap: 1rem; }
 .dag { background: var(--vit); border: 1px solid var(--linje); border-radius: var(--radie); padding: 1rem; }

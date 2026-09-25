@@ -22,15 +22,22 @@
 
 <main id="innehall">
   <div class="omslag">
-    <h1 id="rubrik">Välj typ av möte</h1>
+    <div class="vard">
+      <span id="vardBild"></span>
+      <div>
+        <h1 id="rubrik">Välj typ av möte</h1>
+        <p class="meta" id="vardTitel"></p>
+      </div>
+    </div>
+
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
 
     <ul class="lista" id="typer"></ul>
 
-    <section id="gruppSektion" hidden>
-      <h2>Gruppbokningar</h2>
+    <section id="gruppSektion" hidden aria-labelledby="gruppRubrik">
+      <h2 id="gruppRubrik">Gruppbokningar</h2>
       <p class="meta" id="gruppText"></p>
-      <ul class="lista" id="grupp"></ul>
+      <p class="rad rad--knappar" id="gruppKnappar"></p>
     </section>
   </div>
 </main>
@@ -90,20 +97,50 @@
   }
 
   document.title = `Boka tid med ${person.name}`;
-  document.getElementById('rubrik').textContent =
-    `Boka tid med ${person.name}${person.title ? `, ${person.title}` : ''}`;
+  document.getElementById('rubrik').textContent = `Boka tid med ${person.name}`;
+  if (person.title) document.getElementById('vardTitel').textContent = person.title;
+
+  // Samma runda bild som på översikten, så personen känns igen.
+  const bildplats = document.getElementById('vardBild');
+  if (person.photoUrl) {
+    const bild = document.createElement('img');
+    bild.className = 'person__bild';
+    bild.src = `${bas}/${person.photoUrl}`;
+    bild.alt = ''; // Namnet står som rubrik intill.
+    bildplats.append(bild);
+  } else {
+    const initialer = person.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((d) => d[0].toUpperCase())
+      .join('');
+    const platshallare = document.createElement('span');
+    platshallare.className = 'person__bild person__initialer';
+    platshallare.setAttribute('aria-hidden', 'true');
+    platshallare.textContent = initialer;
+    bildplats.append(platshallare);
+  }
 
   const egna = document.getElementById('typer');
   for (const t of person.eventTypes) egna.append(tjanstLank(t));
 
-  // Gruppbokningar där personen är en av värdarna. De hör inte till någon
-  // enskild i översikten, men hör hemma här: det är ett sätt att träffa hen.
+  /*
+   * Gruppbokningarna visas som knappar, inte som kort. Sidan handlar om att boka
+   * den här personen; mötena med flera hör hit men ska inte konkurrera med
+   * personens egna tider.
+   */
   const grupp = (data.grupp || []).filter((g) => g.hosts.some((h) => h.slug === vardSlug));
   if (grupp.length) {
-    const ut = document.getElementById('grupp');
+    const ut = document.getElementById('gruppKnappar');
     for (const t of grupp) {
+      const a = document.createElement('a');
+      a.className = 'knapp knapp--enkel';
+      a.href = `${bas}/${t.hostSlug}/${t.slug}`;
+      a.textContent = `${t.title} (${t.duration_min} min)`;
       const ovriga = t.hosts.filter((h) => h.slug !== vardSlug).map((h) => h.name);
-      ut.append(tjanstLank(t, ovriga.length ? `Tillsammans med ${ovriga.join(', ')}` : null));
+      if (ovriga.length) a.title = `Tillsammans med ${ovriga.join(', ')}`;
+      ut.append(a);
     }
     document.getElementById('gruppText').textContent =
       `Möten där ${person.name} deltar tillsammans med andra. Bara tider då samtliga är lediga visas.`;
