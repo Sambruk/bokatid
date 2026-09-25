@@ -124,29 +124,29 @@ async function visaOrganisation(bas) {
   }
 
   /*
-   * Ett sidhuvud, en länk till webbplatsen. Finns en logga bär den länken,
-   * annars namnet. Två länkar till samma mål blir bara brus i en skärmläsare.
+   * Loggan leder till översikten över allt bokningsbart — det är den vanligaste
+   * vägen tillbaka och det man förväntar sig av en logga i ett sidhuvud.
+   * Organisationens webbplats når man via namnet intill, så de två länkarna har
+   * olika mål och konkurrerar inte.
    */
-  if (org.websiteUrl) {
-    if (org.logoUrl) {
-      // Loggan blir länk genom att bytas till ett a-element med samma innehåll.
-      const lank = document.createElement('a');
-      lank.className = lankEl.className;
-      lank.href = org.websiteUrl;
-      // Namnet sätts med aria-label, inte bara title: title läses upp
-      // inkonsekvent och syns inte alls på pekskärm.
-      lank.setAttribute('aria-label', `Till ${org.name || 'organisationens webbplats'}`);
-      lank.title = `Till ${org.name || 'organisationens webbplats'}`;
-      while (lankEl.firstChild) lank.append(lankEl.firstChild);
-      lankEl.replaceWith(lank);
-    } else if (org.name) {
-      const lank = document.createElement('a');
-      lank.href = org.websiteUrl;
-      lank.textContent = org.name;
-      lank.title = `Till ${org.name}`;
-      namnEl.textContent = '';
-      namnEl.append(lank);
-    }
+  if (org.logoUrl) {
+    const lank = document.createElement('a');
+    lank.className = lankEl.className;
+    lank.href = `${bas}/`;
+    lank.setAttribute('aria-label', 'Till alla bokningsbara tider');
+    lank.title = 'Till alla bokningsbara tider';
+    while (lankEl.firstChild) lank.append(lankEl.firstChild);
+    lankEl.replaceWith(lank);
   }
+
+  if (org.websiteUrl && org.name) {
+    const lank = document.createElement('a');
+    lank.href = org.websiteUrl;
+    lank.textContent = org.name;
+    lank.title = `Till ${org.name}`;
+    namnEl.textContent = '';
+    namnEl.append(lank);
+  }
+
   return org;
 }

@@ -24,6 +24,8 @@ function skapaElement(tag) {
       }
     },
     replaceWith(ny) { this.ersattAv = ny; },
+    setAttribute(n, v) { this.attr[n] = v; },
+    getAttribute(n) { return this.attr[n] ?? null; },
     set src(v) { this.attr.src = v; }, get src() { return this.attr.src; },
     set alt(v) { this.attr.alt = v; }, get alt() { return this.attr.alt; },
     set href(v) { this.attr.href = v; }, get href() { return this.attr.href; },
@@ -55,7 +57,9 @@ vm.runInThisContext(fs.readFileSync('/app/public/js/gemensamt.js', 'utf8'), { fi
   console.log('Namnet         :', namnLank ? `<a>${namnLank.textContent}</a>` : `"${element.orgNamn.textContent}"`);
   console.log('Färgtema       :', JSON.stringify(document.documentElement.style.varden));
 
-  const ok = Boolean(bild) && lank.tag === 'a' && element.orgNamn.textContent === org.name;
+  // Namnet kan stå som ren text eller som en länk till organisationens webbplats.
+  const namnetVisas = element.orgNamn.textContent === org.name || namnLank?.textContent === org.name;
+  const ok = Boolean(bild) && lank.tag === 'a' && namnetVisas;
   console.log(ok ? '\nRESULTAT: logga och namn byggs som de ska.' : '\nRESULTAT: något saknas.');
   process.exit(ok ? 0 : 1);
 })();
