@@ -139,6 +139,10 @@ Superadmin kan inte ändra sin egen roll eller stänga av sig själv, och den si
 aktiva superadminen kan inte degraderas. Utan de spärrarna går installationen att
 låsa ute sig själv ur.
 
+Organisationen sätter också rubriken och ingressen på startsidan, och texten på
+omröstningarnas mellanalternativ. Lämnas de tomma används tjänstens egna
+standardtexter.
+
 Organisationens namn, logotyp och webbadress visas i sidhuvudet på varje publik
 sida: bokningssidor, avbokning och omröstningar. Logotypen kontrolleras på sitt
 faktiska innehåll (magiska byte), inte på filändelsen, och bara PNG, JPEG och

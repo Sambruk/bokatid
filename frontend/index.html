@@ -22,8 +22,8 @@
 <main id="innehall">
   <div class="omslag">
     <h1 id="rubrik">Boka en tid</h1>
-    <p>Välj vem du vill träffa och en tid som passar. Du får en bekräftelse på e-post
-       med kalenderinbjudan och en länk för att avboka.</p>
+    <p id="ingress">Välj vem du vill träffa och en tid som passar. Du får en bekräftelse på
+       e-post med kalenderinbjudan och en länk för att avboka.</p>
 
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
 
@@ -35,14 +35,13 @@
 
     <section id="personSektion" hidden aria-labelledby="personRubrik">
       <h2 id="personRubrik">Boka med en enskild person</h2>
-      <p class="meta">Klicka på en person för att se vad hen går att boka.</p>
       <ul class="personer" id="personer"></ul>
     </section>
 
-    <h2>Om tjänsten</h2>
-    <p>Boka tid är utvecklad av <a href="https://sambruk.se">Sambruk</a> som öppen källkod,
-       för att kommuner och andra offentliga verksamheter ska kunna erbjuda tidsbokning
-       utan att lämna uppgifter till en leverantör utanför EU.</p>
+    <p class="meta" style="margin-top:2rem">
+      Boka tid är öppen källkod, utvecklad av <a href="https://sambruk.se">Sambruk</a> för
+      offentlig sektor.
+    </p>
   </div>
 </main>
 
@@ -56,7 +55,10 @@
   const org = await visaOrganisation(bas);
   const meddelande = document.getElementById('notis');
 
-  if (org?.name) document.getElementById('rubrik').textContent = `Boka en tid med ${org.name}`;
+  // Rubrik och ingress sätts av organisationen; annars en rimlig standardtext.
+  document.getElementById('rubrik').textContent =
+    org?.intro?.rubrik || (org?.name ? `Boka en tid med ${org.name}` : 'Boka en tid');
+  if (org?.intro?.text) document.getElementById('ingress').textContent = org.intro.text;
 
   const PLATS = { teams: 'Teams-möte', phone: 'Telefonmöte', physical: 'På plats', other: '' };
 
@@ -129,14 +131,6 @@
       titel.textContent = person.title;
       a.append(titel);
     }
-
-    const antal = person.eventTypes.length;
-    const rad = document.createElement('span');
-    rad.className = 'person__antal';
-    rad.textContent = antal
-      ? `${antal} mötestyp${antal === 1 ? '' : 'er'}`
-      : 'Deltar i gruppbokningar';
-    a.append(rad);
 
     li.append(a);
     return li;

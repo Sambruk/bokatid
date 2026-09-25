@@ -39,11 +39,18 @@ const domainAllowed = (email) => {
 
 const app = express();
 app.set('trust proxy', true);
-// Loggan skickas som base64 och behöver mer utrymme än övriga anrop. Gränsen
-// höjs bara för den vägen, inte för hela API:t.
-app.use((req, res, next) =>
-  express.json({ limit: req.path.endsWith('/organization/logo') ? '3mb' : '64kb' })(req, res, next)
-);
+/*
+ * Bilder skickas som base64 och behöver mer utrymme än övriga anrop — base64 är
+ * dessutom omkring en tredjedel större än filen. Gränsen höjs bara för
+ * uppladdningsvägarna, inte för hela API:t. Listan måste innehålla VARJE sådan
+ * väg: en uppladdning som saknas här stoppas av 64 kB-gränsen och användaren får
+ * ett obegripligt fel om storleken.
+ */
+const UPPLADDNINGSVAGAR = ['/organization/logo', '/mitt-foto'];
+app.use((req, res, next) => {
+  const uppladdning = UPPLADDNINGSVAGAR.some((v) => req.path.endsWith(v));
+  express.json({ limit: uppladdning ? '3mb' : '64kb' })(req, res, next);
+});
 
 const router = express.Router();
 
@@ -1313,7 +1320,7 @@ app.use((err, req, res, next) => {
   // För stor kropp fångas av body-parsern innan någon rutt körs. Utan det här
   // svarar tjänsten 500 på en uppladdning som bara var för stor.
   if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-    return res.status(413).json({ error: 'Filen är för stor. Högst 1500 kB för en logotyp.' });
+    return res.status(413).json({ error: 'Filen är för stor. Högst 1500 kB.' });
   }
   if (err && (err.type === 'entity.parse.failed' || err.status === 400)) {
     return res.status(400).json({ error: 'Kunde inte tolka anropet' });

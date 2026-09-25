@@ -346,6 +346,15 @@
           </div>
           <div id="kontrastBesked" aria-live="polite"></div>
 
+          <label for="oOrgRubrik">Rubrik på startsidan
+            <span class="hjalptext">(tomt = "Boka en tid med" följt av namnet ovan)</span></label>
+          <input id="oOrgRubrik" maxlength="120" placeholder="Boka en tid med Sambruk">
+
+          <label for="oOrgIngress">Ingress på startsidan
+            <span class="hjalptext">(texten under rubriken)</span></label>
+          <textarea id="oOrgIngress" maxlength="600" style="min-height:4.5rem"
+            placeholder="Välj vem du vill träffa och en tid som passar. Du får en bekräftelse på e-post med kalenderinbjudan och en länk för att avboka."></textarea>
+
           <label for="oOrgKanske">Svarsalternativet mellan ja och nej
             <span class="hjalptext">(i omröstningar, standard "Om jag måste")</span></label>
           <input id="oOrgKanske" maxlength="40" placeholder="Om jag måste">
@@ -1679,6 +1688,8 @@
     document.getElementById('oOrgNamn').value = o.name || '';
     document.getElementById('oOrgWebb').value = o.website_url || '';
     document.getElementById('oOrgKanske').value = o.poll_maybe_label || '';
+    document.getElementById('oOrgRubrik').value = o.intro_rubrik || '';
+    document.getElementById('oOrgIngress').value = o.intro_text || '';
     if (o.theme_color) {
       document.getElementById('oOrgFarg').value = o.theme_color;
       document.getElementById('oOrgFargText').value = o.theme_color;
@@ -1736,6 +1747,8 @@
         website_url: document.getElementById('oOrgWebb').value,
         theme_color: document.getElementById('oOrgFargText').value || document.getElementById('oOrgFarg').value,
         poll_maybe_label: document.getElementById('oOrgKanske').value,
+        intro_rubrik: document.getElementById('oOrgRubrik').value,
+        intro_text: document.getElementById('oOrgIngress').value,
       }, 'PUT');
       visaKontrast(r.tema);
       notis(meddelande, 'Organisationen är sparad. Ladda om en publik sida för att se den.', 'ok');

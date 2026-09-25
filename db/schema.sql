@@ -274,3 +274,7 @@ ALTER TABLE organization ADD COLUMN IF NOT EXISTS poll_maybe_label TEXT;
 -- Porträtt eller avatar som användaren själv laddar upp. Visas på den publika
 -- översikten som en rund bild med namn och titel under.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_file TEXT;
+
+-- Egen rubrik och ingress på den publika översikten.
+ALTER TABLE organization ADD COLUMN IF NOT EXISTS intro_rubrik TEXT;
+ALTER TABLE organization ADD COLUMN IF NOT EXISTS intro_text TEXT;

@@ -22,7 +22,9 @@ const BILDTYPER = [
 /** Organisationen som den publika sidan behöver den. */
 async function publikOrganisation() {
   const { rows } = await q(
-    'SELECT name, website_url, logo_file, theme_color, poll_maybe_label FROM organization WHERE id = 1'
+    `SELECT name, website_url, logo_file, theme_color, poll_maybe_label,
+            intro_rubrik, intro_text
+     FROM organization WHERE id = 1`
   );
   const o = rows[0] || {};
   return {
@@ -32,6 +34,10 @@ async function publikOrganisation() {
     tema: o.theme_color ? tema(o.theme_color) : null,
     // Svarsalternativet mellan ja och nej. Verksamheter uttrycker det olika.
     kanskeText: o.poll_maybe_label || 'Om jag måste',
+    intro: {
+      rubrik: o.intro_rubrik || null,
+      text: o.intro_text || null,
+    },
   };
 }
 
@@ -213,6 +219,8 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
       website_url: o.website_url || '',
       theme_color: o.theme_color || '',
       poll_maybe_label: o.poll_maybe_label || '',
+      intro_rubrik: o.intro_rubrik || '',
+      intro_text: o.intro_text || '',
       logoUrl: o.logo_file ? `media/${o.logo_file}` : null,
       tema: o.theme_color ? tema(o.theme_color) : null,
       updated_at: o.updated_at,
@@ -225,6 +233,8 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     const webb = str(req.body?.website_url, 500);
     const farg = str(req.body?.theme_color, 20);
     const kanske = str(req.body?.poll_maybe_label, 40);
+    const introRubrik = str(req.body?.intro_rubrik, 120);
+    const introText = str(req.body?.intro_text, 600);
 
     if (webb && !/^https?:\/\/[^\s]+\.[^\s]+$/i.test(webb)) {
       return bad(res, 400, 'Webbadressen måste börja med http:// eller https://');
@@ -237,8 +247,10 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
 
     await q(
       `UPDATE organization SET name = $1, website_url = $2, theme_color = $3,
-         poll_maybe_label = $5, updated_at = now(), updated_by = $4 WHERE id = 1`,
-      [namn || null, webb || null, farg || null, req.user.email, kanske || null]
+         poll_maybe_label = $5, intro_rubrik = $6, intro_text = $7,
+         updated_at = now(), updated_by = $4 WHERE id = 1`,
+      [namn || null, webb || null, farg || null, req.user.email, kanske || null,
+       introRubrik || null, introText || null]
     );
     await audit(req.user.email, 'organization_updated', {
       namn,

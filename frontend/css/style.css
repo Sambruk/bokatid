@@ -157,7 +157,6 @@ a:hover { color: var(--gron-mork); }
 }
 .person__namn { font-weight: 600; color: var(--gron); }
 .person__titel { color: var(--text-svag); font-size: 0.9rem; }
-.person__antal { color: var(--text-svag); font-size: 0.85rem; }
 
 /* Tider */
 .dagar { display: grid; gap: 1rem; }
