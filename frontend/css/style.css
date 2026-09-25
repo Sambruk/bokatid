@@ -113,6 +113,52 @@ a:hover { color: var(--gron-mork); }
 .lista a.block:hover { border-color: var(--gron); background: #fbfdf9; }
 .lista a.block strong { color: var(--gron); }
 
+/* Personer på översikten: runda porträtt med namn och titel under. */
+.personer {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 1.25rem 1rem;
+}
+.person a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+  text-decoration: none;
+  color: inherit;
+  padding: 0.75rem 0.5rem;
+  border-radius: var(--radie);
+}
+.person a:hover { background: var(--vit); }
+.person a:hover .person__namn { color: var(--gron-mork); text-decoration: underline; }
+
+.person__bild {
+  width: 7rem;
+  height: 7rem;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--vit);
+  border: 3px solid var(--gron-ljus);
+}
+
+/* Utan foto: initialer i samma runda form, så rutnätet inte hoppar. */
+.person__initialer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--gron);
+  letter-spacing: 0.02em;
+}
+.person__namn { font-weight: 600; color: var(--gron); }
+.person__titel { color: var(--text-svag); font-size: 0.9rem; }
+.person__antal { color: var(--text-svag); font-size: 0.85rem; }
+
 /* Tider */
 .dagar { display: grid; gap: 1rem; }
 .dag { background: var(--vit); border: 1px solid var(--linje); border-radius: var(--radie); padding: 1rem; }
@@ -239,6 +285,10 @@ footer { border-top: 1px solid var(--linje); padding: 1.25rem 0; color: var(--te
   .rad > * { flex: 1 1 auto; width: 100%; }
   .rad--knappar { flex-direction: row; flex-wrap: wrap; }
   .rad--knappar > * { width: auto; }
+
+  .personer { grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 1rem 0.5rem; }
+  .person__bild { width: 5.5rem; height: 5.5rem; }
+  .person__initialer { font-size: 1.5rem; }
 
   .flikar { gap: 0.3rem; }
   .flik { flex: 1 1 8rem; }

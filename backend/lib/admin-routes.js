@@ -250,26 +250,31 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     res.json({ ok: true, tema: temat });
   });
 
-  router.post('/api/admin/organization/logo', requireAuth, requireAdmin, async (req, res) => {
+  /**
+   * Tar emot en bild som base64 och sparar den i media-katalogen.
+   * Filändelsen avgör ingenting: innehållet måste vara det format det utger sig
+   * för. SVG tas inte emot — den kan bära skript och serveras från samma ursprung.
+   */
+  function tolkaBild(req, res, prefix) {
     const data = String(req.body?.data || '').replace(/^data:[^;]+;base64,/, '');
-    if (!data) return bad(res, 400, 'Ingen fil togs emot');
+    if (!data) return bad(res, 400, 'Ingen fil togs emot'), null;
 
     let buf;
     try {
       buf = Buffer.from(data, 'base64');
     } catch {
-      return bad(res, 400, 'Filen kunde inte tolkas');
+      return bad(res, 400, 'Filen kunde inte tolkas'), null;
     }
-    if (!buf.length) return bad(res, 400, 'Filen är tom');
+    if (!buf.length) return bad(res, 400, 'Filen är tom'), null;
     if (buf.length > LOGO_MAX_BYTES) {
-      return bad(
+      bad(
         res,
         413,
         `Bilden är för stor (${Math.round(buf.length / 1024)} kB). Högst ${Math.round(LOGO_MAX_BYTES / 1024)} kB.`
       );
+      return null;
     }
 
-    // Filändelsen avgör ingenting: innehållet måste vara det format det utger sig för.
     const typ = BILDTYPER.find((t) => {
       try {
         return t.magi(buf);
@@ -277,41 +282,63 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
         return false;
       }
     });
-    if (!typ) return bad(res, 415, 'Bilden måste vara PNG, JPEG eller WebP. SVG stöds inte.');
+    if (!typ) return bad(res, 415, 'Bilden måste vara PNG, JPEG eller WebP. SVG stöds inte.'), null;
 
     fs.mkdirSync(MEDIA, { recursive: true });
-    const { rows } = await q('SELECT logo_file FROM organization WHERE id = 1');
-    const gammal = rows[0]?.logo_file;
-
-    const filnamn = `logo-${randomToken(6)}.${typ.ext}`;
+    const filnamn = `${prefix}-${randomToken(6)}.${typ.ext}`;
     fs.writeFileSync(path.join(MEDIA, filnamn), buf);
+    return { filnamn, typ, byte: buf.length };
+  }
 
+  function taBortFil(filnamn) {
+    if (!filnamn) return;
+    try {
+      fs.unlinkSync(path.join(MEDIA, filnamn));
+    } catch {
+      /* redan borta */
+    }
+  }
+
+  /* ---------- porträtt (varje användare sitt eget) ---------- */
+
+  router.post('/api/admin/mitt-foto', requireAuth, async (req, res) => {
+    const bild = tolkaBild(req, res, 'foto');
+    if (!bild) return;
+
+    const { rows } = await q('SELECT photo_file FROM users WHERE id = $1', [req.user.id]);
+    await q('UPDATE users SET photo_file = $2 WHERE id = $1', [req.user.id, bild.filnamn]);
+    if (rows[0]?.photo_file !== bild.filnamn) taBortFil(rows[0]?.photo_file);
+
+    await audit(req.user.email, 'foto_uppladdat', { byte: bild.byte, typ: bild.typ.mime });
+    res.json({ ok: true, photoUrl: `media/${bild.filnamn}` });
+  });
+
+  router.delete('/api/admin/mitt-foto', requireAuth, async (req, res) => {
+    const { rows } = await q('SELECT photo_file FROM users WHERE id = $1', [req.user.id]);
+    taBortFil(rows[0]?.photo_file);
+    await q('UPDATE users SET photo_file = NULL WHERE id = $1', [req.user.id]);
+    await audit(req.user.email, 'foto_borttaget', {});
+    res.json({ ok: true });
+  });
+
+  router.post('/api/admin/organization/logo', requireAuth, requireAdmin, async (req, res) => {
+    const bild = tolkaBild(req, res, 'logo');
+    if (!bild) return;
+
+    const { rows } = await q('SELECT logo_file FROM organization WHERE id = 1');
     await q('UPDATE organization SET logo_file = $1, updated_at = now(), updated_by = $2 WHERE id = 1', [
-      filnamn,
+      bild.filnamn,
       req.user.email,
     ]);
+    if (rows[0]?.logo_file !== bild.filnamn) taBortFil(rows[0]?.logo_file);
 
-    if (gammal && gammal !== filnamn) {
-      try {
-        fs.unlinkSync(path.join(MEDIA, gammal));
-      } catch {
-        /* redan borta */
-      }
-    }
-
-    await audit(req.user.email, 'organization_logo_uploaded', { filnamn, typ: typ.mime, byte: buf.length });
-    res.json({ ok: true, logoUrl: `media/${filnamn}` });
+    await audit(req.user.email, 'organization_logo_uploaded', { typ: bild.typ.mime, byte: bild.byte });
+    res.json({ ok: true, logoUrl: `media/${bild.filnamn}` });
   });
 
   router.delete('/api/admin/organization/logo', requireAuth, requireAdmin, async (req, res) => {
     const { rows } = await q('SELECT logo_file FROM organization WHERE id = 1');
-    if (rows[0]?.logo_file) {
-      try {
-        fs.unlinkSync(path.join(MEDIA, rows[0].logo_file));
-      } catch {
-        /* redan borta */
-      }
-    }
+    taBortFil(rows[0]?.logo_file);
     await q('UPDATE organization SET logo_file = NULL, updated_at = now(), updated_by = $1 WHERE id = 1', [
       req.user.email,
     ]);

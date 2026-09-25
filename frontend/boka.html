@@ -197,6 +197,10 @@
     document.getElementById('namn').focus();
   }
 
+  for (const id of ['namn', 'epost']) {
+    document.getElementById(id).addEventListener('input', (ev) => ev.target.removeAttribute('aria-invalid'));
+  }
+
   document.getElementById('byt').addEventListener('click', () => {
     stegFormular.hidden = true;
     vald = null;
@@ -210,9 +214,43 @@
     laddaTider(nyStart, fonsterSlut, true);
   });
 
+  /**
+   * Ett felmeddelande räcker inte: den som inte ser sidan behöver veta VILKET
+   * fält som är fel. Fältet markeras och fokus flyttas dit (WCAG 3.3.1).
+   */
+  function visaFaltfel(falt, text) {
+    for (const el of document.querySelectorAll('#formular [aria-invalid]')) el.removeAttribute('aria-invalid');
+    notis(meddelande, text, 'fel');
+    if (falt) {
+      falt.setAttribute('aria-invalid', 'true');
+      falt.focus();
+    }
+    return false;
+  }
+
+  /** Gissar vilket fält servern klagade på, så markeringen hamnar rätt. */
+  function faltForFel(text) {
+    const t = String(text).toLowerCase();
+    if (t.includes('e-post')) return document.getElementById('epost');
+    if (t.includes('namn')) return document.getElementById('namn');
+    return null;
+  }
+
   document.getElementById('formular').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (!vald) return notis(meddelande, 'Välj en tid först.', 'fel');
+
+    const namnFalt = document.getElementById('namn');
+    const epostFalt = document.getElementById('epost');
+    if (namnFalt.value.trim().length < 2) return visaFaltfel(namnFalt, 'Ange ditt namn.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(epostFalt.value.trim())) {
+      return visaFaltfel(epostFalt, 'Ange en giltig e-postadress, till exempel namn@kommun.se.');
+    }
+    for (const falt of document.querySelectorAll('[data-fraga]')) {
+      if (falt.required && !falt.value.trim()) {
+        return visaFaltfel(falt, `Fyll i: ${falt.dataset.fraga}`);
+      }
+    }
     const knapp = document.getElementById('boka');
     knapp.disabled = true;
     rensaNotis(meddelande);
@@ -235,7 +273,7 @@
       );
       visaKlart(svar.booking);
     } catch (err) {
-      notis(meddelande, err.message, 'fel');
+      visaFaltfel(faltForFel(err.message), err.message);
       knapp.disabled = false;
       // Blev tiden upptagen under tiden: hämta om listan.
       if (/bokad|ledig/i.test(err.message)) {

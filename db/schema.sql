@@ -270,3 +270,7 @@ CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets (user_id);
 
 -- Egen text på svarsalternativet "Om jag måste" i omröstningar.
 ALTER TABLE organization ADD COLUMN IF NOT EXISTS poll_maybe_label TEXT;
+
+-- Porträtt eller avatar som användaren själv laddar upp. Visas på den publika
+-- översikten som en rund bild med namn och titel under.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_file TEXT;

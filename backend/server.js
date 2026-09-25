@@ -287,10 +287,10 @@ router.get('/api/hosts', async (req, res) => {
 router.get('/api/oversikt', async (req, res) => {
   const { rows } = await q(
     `SELECT e.slug, e.title, e.description, e.duration_min, e.location_type,
-            u.slug AS host_slug, u.name AS host_name, u.title AS host_title,
+            u.slug AS host_slug, u.name AS host_name, u.title AS host_title, u.photo_file,
             COALESCE(
-              (SELECT json_agg(json_build_object('name', hu.name, 'title', hu.title, 'slug', hu.slug)
-                               ORDER BY hu.name)
+              (SELECT json_agg(json_build_object('name', hu.name, 'title', hu.title, 'slug', hu.slug,
+                                                 'photo_file', hu.photo_file) ORDER BY hu.name)
                FROM event_type_hosts h JOIN users hu ON hu.id = h.user_id
                WHERE h.event_type_id = e.id AND hu.active AND hu.id <> u.id),
               '[]') AS medvardar
@@ -312,21 +312,40 @@ router.get('/api/oversikt', async (req, res) => {
       hostSlug: r.host_slug,
     };
 
-    const person = (slug, name, title) => {
-      if (!personer.has(slug)) personer.set(slug, { slug, name, title, eventTypes: [] });
+    const person = (slug, name, title, foto) => {
+      if (!personer.has(slug)) {
+        personer.set(slug, {
+          slug,
+          name,
+          title,
+          photoUrl: foto ? `media/${foto}` : null,
+          eventTypes: [],
+        });
+      }
       return personer.get(slug);
     };
 
     if (r.medvardar.length) {
-      const hosts = [{ name: r.host_name, title: r.host_title, slug: r.host_slug }, ...r.medvardar];
-      grupp.push({ ...tjanst, hosts });
+      const hosts = [
+        { name: r.host_name, title: r.host_title, slug: r.host_slug, photo_file: r.photo_file },
+        ...r.medvardar,
+      ];
+      grupp.push({
+        ...tjanst,
+        hosts: hosts.map((h) => ({
+          name: h.name,
+          title: h.title,
+          slug: h.slug,
+          photoUrl: h.photo_file ? `media/${h.photo_file}` : null,
+        })),
+      });
       // Även den som bara medverkar i gruppbokningar ska finnas i listan, så att
       // personsidan kan visa namn och gruppbokningar för någon utan egna tjänster.
-      for (const h of hosts) person(h.slug, h.name, h.title);
+      for (const h of hosts) person(h.slug, h.name, h.title, h.photo_file);
       continue;
     }
 
-    person(r.host_slug, r.host_name, r.host_title).eventTypes.push(tjanst);
+    person(r.host_slug, r.host_name, r.host_title, r.photo_file).eventTypes.push(tjanst);
   }
 
   res.json({
@@ -719,6 +738,7 @@ router.get('/api/me', async (req, res) => {
       slug: user.slug,
       role: user.role,
       timezone: user.timezone,
+      photoUrl: user.photo_file ? `media/${user.photo_file}` : null,
     },
     publicUrl: `${PUBLIC_URL}/${user.slug}`,
     m365: {

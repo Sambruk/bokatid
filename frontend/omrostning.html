@@ -229,7 +229,7 @@
     knapp.disabled = true;
     rensaNotis(meddelande);
     try {
-      const svar = await skicka(`${bas}/api/poll/${encodeURIComponent(token)}/vote`, {
+      const resultat = await skicka(`${bas}/api/poll/${encodeURIComponent(token)}/vote`, {
         svarToken,
         name: document.getElementById('namn').value,
         email: document.getElementById('epost').value,
@@ -238,7 +238,7 @@
       });
       notis(
         meddelande,
-        svar.kvittoSkickat
+        resultat.kvittoSkickat
           ? 'Tack! Ditt svar är sparat. Du får ett mejl med tiderna du valde och en kalenderfil för att lägga in dem preliminärt.'
           : 'Tack! Ditt svar är sparat. Du får besked när tiden är bestämd.',
         'ok'

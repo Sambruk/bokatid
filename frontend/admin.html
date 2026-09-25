@@ -262,6 +262,18 @@
       </div>
 
       <div id="del-konto" role="tabpanel" aria-labelledby="flik-konto" tabindex="0" hidden>
+        <h2>Ditt foto</h2>
+        <p class="meta">Visas som en rund bild på den publika översikten, med ditt namn och din
+           titel under. Lägger du inte upp något visas dina initialer i stället.</p>
+        <div class="kort">
+          <p id="mittFotoNu"></p>
+          <p><label for="mittFoto">Ladda upp <span class="hjalptext">PNG, JPEG eller WebP, högst 1500 kB</span></label>
+            <input id="mittFoto" type="file" accept="image/png,image/jpeg,image/webp"></p>
+          <p class="rad rad--knappar">
+            <button type="button" class="knapp--fara" id="taBortFoto" hidden>Ta bort fotot</button>
+          </p>
+        </div>
+
         <h2>Gallring av personuppgifter</h2>
         <div id="gallringStatus"></div>
         <p class="rad rad--knappar">
@@ -1799,6 +1811,56 @@
     }
   });
 
+  /* ---- eget foto ---- */
+
+  function visaMittFoto() {
+    const ut = document.getElementById('mittFotoNu');
+    ut.textContent = '';
+    if (jag.user.photoUrl) {
+      const bild = document.createElement('img');
+      bild.src = `${bas}/${jag.user.photoUrl}`;
+      bild.alt = 'Ditt nuvarande foto';
+      bild.style.cssText = 'width:7rem;height:7rem;border-radius:50%;object-fit:cover;border:3px solid var(--gron-ljus)';
+      ut.append(bild);
+      document.getElementById('taBortFoto').hidden = false;
+    } else {
+      ut.className = 'meta';
+      ut.textContent = 'Inget foto uppladdat — dina initialer visas i stället.';
+      document.getElementById('taBortFoto').hidden = true;
+    }
+  }
+
+  document.getElementById('mittFoto').addEventListener('change', async (ev) => {
+    const fil = ev.target.files && ev.target.files[0];
+    if (!fil) return;
+    if (fil.size > 1500000) {
+      ev.target.value = '';
+      return notis(meddelande, `Bilden är ${Math.round(fil.size / 1024)} kB. Högst 1500 kB.`, 'fel');
+    }
+    const lasare = new FileReader();
+    lasare.onload = async () => {
+      try {
+        const r = await skicka(`${bas}/api/admin/mitt-foto`, { data: String(lasare.result) });
+        jag.user.photoUrl = r.photoUrl;
+        visaMittFoto();
+        notis(meddelande, 'Fotot är uppladdat och syns nu på översikten.', 'ok');
+      } catch (err) {
+        notis(meddelande, err.message, 'fel');
+      } finally {
+        ev.target.value = '';
+      }
+    };
+    lasare.readAsDataURL(fil);
+  });
+
+  document.getElementById('taBortFoto').addEventListener('click', async () => {
+    if (!confirm('Ta bort ditt foto? Dina initialer visas i stället.')) return;
+    await skicka(`${bas}/api/admin/mitt-foto`, undefined, 'DELETE');
+    jag.user.photoUrl = null;
+    visaMittFoto();
+    notis(meddelande, 'Fotot är borttaget.', 'ok');
+  });
+
   /* ---- uppstart ---- */
   async function start() {
     try {
@@ -1836,6 +1898,7 @@
     const org = await visaOrganisation(bas);
     if (org?.kanskeText) SVARSTEXT.kanske = org.kanskeText;
 
+    visaMittFoto();
     await laddaAnvandare();
     if (jag.user.role === 'admin') {
       document.getElementById('flik-anvandare').hidden = false;

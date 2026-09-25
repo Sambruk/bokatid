@@ -27,8 +27,17 @@
 
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
 
-    <div id="grupp"></div>
-    <div id="vardar"></div>
+    <section id="gruppSektion" hidden aria-labelledby="gruppRubrik">
+      <h2 id="gruppRubrik">Gruppbokningar</h2>
+      <p class="meta" id="gruppText"></p>
+      <ul class="lista" id="grupp"></ul>
+    </section>
+
+    <section id="personSektion" hidden aria-labelledby="personRubrik">
+      <h2 id="personRubrik">Boka med en enskild person</h2>
+      <p class="meta">Klicka på en person för att se vad hen går att boka.</p>
+      <ul class="personer" id="personer"></ul>
+    </section>
 
     <h2>Om tjänsten</h2>
     <p>Boka tid är utvecklad av <a href="https://sambruk.se">Sambruk</a> som öppen källkod,
@@ -51,8 +60,8 @@
 
   const PLATS = { teams: 'Teams-möte', phone: 'Telefonmöte', physical: 'På plats', other: '' };
 
-  /** Ett kort per tjänst, med längd och mötesform. */
-  function tjanstLank(t, undertext) {
+  /** Ett kort per gruppbokning, med längd, mötesform och vilka som deltar. */
+  function gruppLank(t) {
     const li = document.createElement('li');
     const a = document.createElement('a');
     a.className = 'block';
@@ -63,66 +72,100 @@
 
     const meta = document.createElement('span');
     meta.className = 'meta';
-    const delar = [`${t.duration_min} minuter`, PLATS[t.location_type]].filter(Boolean);
-    meta.textContent = ` — ${delar.join(' · ')}`;
+    meta.textContent = ` — ${[`${t.duration_min} minuter`, PLATS[t.location_type]].filter(Boolean).join(' · ')}`;
     a.append(stark, meta);
 
-    if (undertext) {
-      const rad = document.createElement('span');
-      rad.className = 'meta';
-      rad.style.display = 'block';
-      rad.textContent = undertext;
-      a.append(rad);
-    }
-    return (li.append(a), li);
+    const vilka = document.createElement('span');
+    vilka.className = 'meta';
+    vilka.style.display = 'block';
+    vilka.textContent = `Med ${t.hosts.map((h) => h.name).join(', ')}`;
+    a.append(vilka);
+
+    li.append(a);
+    return li;
   }
 
-  function sektion(rubrikText, undertext) {
-    const s = document.createElement('section');
-    s.className = 'kort';
-    const h = document.createElement('h2');
-    h.style.marginTop = '0';
-    h.textContent = rubrikText;
-    s.append(h);
-    if (undertext) {
-      const p = document.createElement('p');
-      p.className = 'meta';
-      p.textContent = undertext;
-      s.append(p);
+  /** Initialer när personen inte lagt upp något foto. */
+  function initialer(namn) {
+    return namn
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((d) => d[0].toUpperCase())
+      .join('');
+  }
+
+  function personKort(person) {
+    const li = document.createElement('li');
+    li.className = 'person';
+
+    const a = document.createElement('a');
+    a.href = `${bas}/${person.slug}`;
+
+    if (person.photoUrl) {
+      const bild = document.createElement('img');
+      bild.className = 'person__bild';
+      bild.src = `${bas}/${person.photoUrl}`;
+      bild.loading = 'lazy';
+      // Namnet står som text intill, så bilden är dekorativ och får tom alt.
+      bild.alt = '';
+      a.append(bild);
+    } else {
+      const platshallare = document.createElement('span');
+      platshallare.className = 'person__bild person__initialer';
+      platshallare.setAttribute('aria-hidden', 'true');
+      platshallare.textContent = initialer(person.name);
+      a.append(platshallare);
     }
-    const ul = document.createElement('ul');
-    ul.className = 'lista';
-    s.append(ul);
-    return { sektion: s, lista: ul };
+
+    const namn = document.createElement('span');
+    namn.className = 'person__namn';
+    namn.textContent = person.name;
+    a.append(namn);
+
+    if (person.title) {
+      const titel = document.createElement('span');
+      titel.className = 'person__titel';
+      titel.textContent = person.title;
+      a.append(titel);
+    }
+
+    const antal = person.eventTypes.length;
+    const rad = document.createElement('span');
+    rad.className = 'person__antal';
+    rad.textContent = antal
+      ? `${antal} mötestyp${antal === 1 ? '' : 'er'}`
+      : 'Deltar i gruppbokningar';
+    a.append(rad);
+
+    li.append(a);
+    return li;
   }
 
   try {
     const data = await hamta(`${bas}/api/oversikt`);
-    const personer = (data.personer || []).filter((p) => p.eventTypes.length);
+    const personer = data.personer || [];
+    const grupp = data.grupp || [];
 
-    if (!personer.length && !(data.grupp || []).length) {
+    if (!personer.length && !grupp.length) {
       notis(meddelande, 'Det finns inga bokningsbara tider upplagda ännu.', 'info');
       return;
     }
 
-    // Gruppbokningar först: de tillhör ingen enskild person och är lätta att
-    // missa om de ligger sist.
-    if (data.grupp.length) {
-      const { sektion: s, lista } = sektion(
-        'Gruppbokningar',
-        'Möten med flera deltagare från oss. Bara tider då samtliga är lediga visas.'
-      );
-      for (const t of data.grupp) {
-        lista.append(tjanstLank(t, `Med ${t.hosts.map((h) => h.name).join(', ')}`));
-      }
-      document.getElementById('grupp').append(s);
+    // Gruppbokningarna ligger synliga direkt: de tillhör ingen enskild person
+    // och skulle annars försvinna bakom ett klick.
+    if (grupp.length) {
+      const ut = document.getElementById('grupp');
+      for (const t of grupp) ut.append(gruppLank(t));
+      document.getElementById('gruppText').textContent =
+        'Möten med flera av oss. Bara tider då samtliga är lediga visas.';
+      document.getElementById('gruppSektion').hidden = false;
     }
 
-    const ut = document.getElementById('vardar');
-    for (const person of personer) {
-      const { sektion: s, lista } = sektion(person.name + (person.title ? `, ${person.title}` : ''));
-      for (const t of person.eventTypes) lista.append(tjanstLank(t));
-      ut.append(s);
+    if (personer.length) {
+      const ut = document.getElementById('personer');
+      for (const p of personer) ut.append(personKort(p));
+      document.getElementById('personSektion').hidden = false;
     }
   } catch (err) {
     notis(meddelande, `Kunde inte hämta bokningsbara tider: ${err.message}`, 'fel');

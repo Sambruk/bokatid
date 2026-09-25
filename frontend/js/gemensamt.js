@@ -125,6 +125,9 @@ async function visaOrganisation(bas) {
       const lank = document.createElement('a');
       lank.className = lankEl.className;
       lank.href = org.websiteUrl;
+      // Namnet sätts med aria-label, inte bara title: title läses upp
+      // inkonsekvent och syns inte alls på pekskärm.
+      lank.setAttribute('aria-label', `Till ${org.name || 'organisationens webbplats'}`);
       lank.title = `Till ${org.name || 'organisationens webbplats'}`;
       while (lankEl.firstChild) lank.append(lankEl.firstChild);
       lankEl.replaceWith(lank);
