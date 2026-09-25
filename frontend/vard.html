@@ -34,11 +34,7 @@
 
     <ul class="lista" id="typer"></ul>
 
-    <section id="gruppSektion" hidden aria-labelledby="gruppRubrik">
-      <h2 id="gruppRubrik">Gruppbokningar</h2>
-      <p class="meta" id="gruppText"></p>
-      <p class="rad rad--knappar" id="gruppKnappar"></p>
-    </section>
+    <p id="gruppLank" hidden></p>
   </div>
 </main>
 
@@ -126,25 +122,18 @@
   for (const t of person.eventTypes) egna.append(tjanstLank(t));
 
   /*
-   * Gruppbokningarna visas som knappar, inte som kort. Sidan handlar om att boka
-   * den här personen; mötena med flera hör hit men ska inte konkurrera med
-   * personens egna tider.
+   * Gruppbokningarna står samlade på översikten. Här räcker en länk dit — sidan
+   * handlar om att boka den här personen, inte om möten som hör till flera.
    */
   const grupp = (data.grupp || []).filter((g) => g.hosts.some((h) => h.slug === vardSlug));
   if (grupp.length) {
-    const ut = document.getElementById('gruppKnappar');
-    for (const t of grupp) {
-      const a = document.createElement('a');
-      a.className = 'knapp knapp--enkel';
-      a.href = `${bas}/${t.hostSlug}/${t.slug}`;
-      a.textContent = `${t.title} (${t.duration_min} min)`;
-      const ovriga = t.hosts.filter((h) => h.slug !== vardSlug).map((h) => h.name);
-      if (ovriga.length) a.title = `Tillsammans med ${ovriga.join(', ')}`;
-      ut.append(a);
-    }
-    document.getElementById('gruppText').textContent =
-      `Möten där ${person.name} deltar tillsammans med andra. Bara tider då samtliga är lediga visas.`;
-    document.getElementById('gruppSektion').hidden = false;
+    const p = document.getElementById('gruppLank');
+    const a = document.createElement('a');
+    a.className = 'knapp knapp--enkel';
+    a.href = `${bas}/#gruppRubrik`;
+    a.textContent = 'Se gruppbokningar';
+    p.append(a);
+    p.hidden = false;
   }
 
   if (!person.eventTypes.length && !grupp.length) {
