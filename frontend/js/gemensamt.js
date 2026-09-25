@@ -106,6 +106,14 @@ async function visaOrganisation(bas) {
   // Loggan skapas här i stället för att ligga dold i HTML:en. Ett element som
   // inte finns kan inte glömmas bort synligt eller osynligt av en stilregel.
   if (org.logoUrl) {
+    // Logotypen får också bli fliksymbol — annars visar webbläsaren tjänstens
+    // egen ikon på en sida som annars bär verksamhetens uttryck.
+    const ikon = document.getElementById('ikon');
+    if (ikon) {
+      ikon.href = `${bas}/${org.logoUrl}`;
+      ikon.type = org.logoUrl.endsWith('.png') ? 'image/png' : org.logoUrl.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    }
+
     const bild = document.createElement('img');
     bild.className = 'topp__logga';
     bild.src = `${bas}/${org.logoUrl}`;

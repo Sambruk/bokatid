@@ -40,14 +40,15 @@ Tre brister hittades av de egna kontrollerna och är åtgärdade:
 - **Sidorna kräver JavaScript.** Utan det visas inga bokningsbara tider. Det är
   inget WCAG-fel i sig, men för en tjänst som möter invånare är det en verklig
   begränsning som bör vägas in.
-- **Beröringsytor.** Radioknapparna i omröstningen är 13×13 px, men hela etiketten
-  är klickbar, vilket ger en tillräcklig yta i praktiken. WCAG 2.2 skärper kravet
-  (2.5.8, 24×24 px) och då bör kontrollerna förstoras.
+- ~~Beröringsytor: radioknapparna var 13×13 px.~~ Åtgärdat 2026-09-25: knapparna är
+  24×24 px och den klickbara ytan runt knapp och etikett minst 66×38 px, vilket
+  klarar WCAG 2.2 (2.5.8). Gäller även kryssrutor i övriga formulär.
 - **Ingen granskning med riktig skärmläsare.** Tillgänglighetsträdet är kontrollerat,
   men NVDA, JAWS eller VoiceOver har inte använts. Det bör göras innan tjänsten
   används brett mot invånare.
-- Ingen `favicon.ico` finns, vilket ger ett 404-svar i webbläsarens konsol. Ingen
-  tillgänglighetsfråga, men lätt att åtgärda.
+- ~~Ingen favicon fanns, vilket gav ett 404-svar i konsolen.~~ Åtgärdat 2026-09-25:
+  tjänsten har en egen ikon, och har organisationen laddat upp en logotyp används
+  den i webbläsarfliken i stället.
 
 ## Upprepa granskningen
 

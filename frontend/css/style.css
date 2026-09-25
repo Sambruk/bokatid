@@ -212,7 +212,9 @@ input, select, textarea {
   color: var(--text);
 }
 textarea { min-height: 6rem; resize: vertical; }
-input[type="checkbox"] { width: auto; }
+/* Beröringsyta minst 24x24 px (WCAG 2.2 2.5.8). Standardstorleken i
+   webbläsaren är omkring 13 px, vilket är för litet att träffa med fingret. */
+input[type="checkbox"], input[type="radio"] { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; }
 fieldset { border: 1px solid var(--linje); border-radius: var(--radie); margin: 0 0 1rem; padding: 0.5rem 1rem 1rem; }
 legend { font-weight: 600; padding: 0 0.35rem; }
 
@@ -277,7 +279,7 @@ footer { border-top: 1px solid var(--linje); padding: 1.25rem 0; color: var(--te
   /* Beröringsytor: minst 44 px höjd enligt WCAG 2.5.5. */
   button, .knapp, .tid { min-height: 44px; padding: 0.6rem 0.9rem; }
   input, select, textarea { min-height: 44px; font-size: 16px; } /* 16px hindrar att iOS zoomar in */
-  input[type="checkbox"], input[type="radio"] { min-height: 0; width: 1.15rem; height: 1.15rem; }
+  input[type="checkbox"], input[type="radio"] { min-height: 0; width: 1.5rem; height: 1.5rem; }
 
   /* Formulärrader staplas i stället för att klamra sig fast vid varandra. */
   .rad { flex-direction: column; align-items: stretch; gap: 0.5rem; }

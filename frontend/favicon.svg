@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Boka tid">
+  <!-- Enkel form som håller på 16 px: ifylld ruta med en klocka i. -->
+  <rect width="32" height="32" rx="7" fill="#3f7a11"/>
+  <circle cx="16" cy="17" r="8.5" fill="none" stroke="#fff" stroke-width="2.4"/>
+  <path d="M16 12.5V17l3.2 2.2" fill="none" stroke="#fff" stroke-width="2.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M11 5.5h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Svara om mötestid</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml" id="ikon">
 <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
@@ -163,19 +164,22 @@
     for (const [varde, text] of Object.entries(SVARSTEXT)) {
       const id = `t${tid.id}_${varde}`;
       const omslag = document.createElement('span');
+      // Hela ytan runt knapp och etikett är klickbar, inte bara den lilla ringen.
+      omslag.style.cssText = 'display:inline-flex;align-items:center;padding:0.35rem 0.6rem 0.35rem 0.35rem;border-radius:var(--radie)';
       const radio = document.createElement('input');
       radio.type = 'radio';
       radio.name = `tid_${tid.id}`;
       radio.id = id;
       radio.value = varde;
-      radio.style.width = 'auto';
-      radio.style.marginRight = '0.35rem';
+      radio.style.marginRight = '0.45rem';
       if (data.jag && data.jag.svar[tid.id] === varde) radio.checked = true;
       const etikett = document.createElement('label');
       etikett.setAttribute('for', id);
       etikett.textContent = text;
       etikett.style.display = 'inline';
       etikett.style.fontWeight = '400';
+      etikett.style.margin = '0';
+      etikett.style.cursor = 'pointer';
       omslag.append(radio, etikett);
       val.append(omslag);
     }
