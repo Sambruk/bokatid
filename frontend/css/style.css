@@ -50,7 +50,8 @@ body {
 .topp__vanster { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; min-width: 0; }
 .topp__logglank { display: inline-flex; line-height: 0; }
 .topp__logglank:empty { display: none; }
-.topp__app { margin: 0; font-weight: 700; color: var(--gron); font-size: 1.05rem; }
+.topp__app { margin: 0; font-weight: 700; color: var(--gron); font-size: 1.05rem; text-decoration: none; }
+a.topp__app:hover { color: var(--gron-mork); text-decoration: underline; }
 .topp__org {
   margin: 0;
   flex: 1 1 10rem;
