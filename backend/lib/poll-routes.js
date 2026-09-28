@@ -182,52 +182,96 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       ]);
     }
 
-    const holdResultat = poll.hold_calendar ? await syncHolds(req.user, poll.id) : { skapade: 0, fel: [] };
-
-    // Deltagare och inbjudningar.
-    let utskick = 0;
-    const utskicksfel = [];
+    // Deltagarna sparas direkt så att de syns i detaljvyn; utskicket görs sedan.
+    const sparadeDeltagare = [];
     for (const p of deltagare) {
-      const token = randomToken(18);
       const { rows } = await q(
         `INSERT INTO poll_participants (poll_id, name, email, org, token)
          VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (poll_id, lower(email)) DO UPDATE SET name = EXCLUDED.name
          RETURNING *`,
-        [poll.id, p.name, p.email, p.org || null, token]
+        [poll.id, p.name, p.email, p.org || null, randomToken(18)]
       );
-      const deltagareRad = rows[0];
-      const optioner = (await q('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY start_utc', [poll.id])).rows;
-      const svar = await mail.sendPollInvitation({
-        poll,
-        host: req.user,
-        participant: deltagareRad,
-        url: `${pollUrl(poll.public_token)}?svar=${deltagareRad.token}`,
-        options: optioner,
-      });
-      if (svar.sent) {
-        await q('UPDATE poll_participants SET invited_at = now() WHERE id = $1', [deltagareRad.id]);
-        utskick++;
-      } else {
-        utskicksfel.push(p.email);
-      }
+      sparadeDeltagare.push(rows[0]);
     }
 
     await audit(req.user.email, 'poll_created', {
       pollId: poll.id,
       antalTider: tider.length,
       antalDeltagare: deltagare.length,
-      utskick,
-      preliminarbokningar: holdResultat.skapade,
       kalenderLast: calendarChecked,
+    });
+
+    // Reservationer i kalendern och inbjudningar tar en till några sekunder per
+    // styck. Tiderna är redan blockerade i databasen (busyFor läser
+    // poll_options), så kalenderposterna behövs inte för att hindra dubbelbokning
+    // och kan göras efter svaret. Resultatet syns i detaljvyn.
+    const user = req.user;
+    iBakgrunden(poll.id, async () => {
+      const [holds] = await Promise.all([
+        poll.hold_calendar ? syncHolds(user, poll.id) : { skapade: 0, fel: [] },
+        skickaInbjudningar(user, poll, sparadeDeltagare),
+      ]);
+      await audit('system', 'poll_bakgrund_klar', {
+        pollId: poll.id,
+        preliminarbokningar: holds.skapade,
+        reservationsfel: holds.fel.length,
+      });
     });
 
     res.status(201).json({
       poll: { id: poll.id, url: pollUrl(poll.public_token) },
-      holds: holdResultat,
-      invitations: { skickade: utskick, misslyckade: utskicksfel },
+      bakgrund: {
+        reservationer: poll.hold_calendar ? tider.length : 0,
+        inbjudningar: sparadeDeltagare.length,
+      },
     });
   });
+
+  /**
+   * Pågående bakgrundsjobb per omröstning. Beslut, avbrott och borttagning
+   * väntar in jobbet: annars kan en reservation sparas efter att de andra
+   * släppts och bli liggande i kalendern.
+   */
+  const pagar = new Map();
+
+  function iBakgrunden(pollId, jobb) {
+    const fore = pagar.get(pollId) || Promise.resolve();
+    const detta = fore
+      .then(jobb)
+      .catch((err) => audit('system', 'poll_bakgrund_fel', { pollId, error: String(err && err.message) }).catch(() => {}))
+      .finally(() => {
+        if (pagar.get(pollId) === detta) pagar.delete(pollId);
+      });
+    pagar.set(pollId, detta);
+  }
+
+  const vantaPaBakgrund = (pollId) => pagar.get(pollId) || Promise.resolve();
+
+  async function skickaInbjudningar(user, poll, deltagare) {
+    if (!deltagare.length) return;
+    const optioner = (await q('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY start_utc', [poll.id])).rows;
+    for (const d of deltagare) {
+      const svar = await mail.sendPollInvitation({
+        poll,
+        host: user,
+        participant: d,
+        url: `${pollUrl(poll.public_token)}?svar=${d.token}`,
+        options: optioner,
+      });
+      if (svar.sent) await q('UPDATE poll_participants SET invited_at = now() WHERE id = $1', [d.id]);
+      else await audit('system', 'poll_inbjudan_fel', { pollId: poll.id, participantId: d.id, fel: svar.errors });
+    }
+  }
+
+  /** Kör fn för varje element, högst `samtidigt` åt gången. */
+  async function iOmgangar(lista, samtidigt, fn) {
+    let nasta = 0;
+    const arbetare = Array.from({ length: Math.min(samtidigt, lista.length) }, async () => {
+      while (nasta < lista.length) await fn(lista[nasta++]);
+    });
+    await Promise.all(arbetare);
+  }
 
   /**
    * Skapar preliminärbokningar för de förslag som saknar en. Idempotent: körs om
@@ -243,8 +287,8 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
 
     let skapade = 0;
     const fel = [];
-    for (const o of poll.options) {
-      if (o.graph_event_id) continue;
+    // Graph tillåter fyra samtidiga anrop per brevlåda; tre lämnar marginal.
+    await iOmgangar(poll.options.filter((o) => !o.graph_event_id), 3, async (o) => {
       try {
         const { id } = await graph.createHold(auth.token, {
           subject: `Preliminär: ${poll.title}`,
@@ -256,14 +300,29 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
           endIso: new Date(o.end_utc).toISOString(),
           transactionId: `poll-${poll.id}-opt-${o.id}`,
         });
-        await q('UPDATE poll_options SET graph_event_id = $2, hold_error = NULL WHERE id = $1', [o.id, id]);
-        skapade++;
+        // Omröstningen kan ha tagits bort, beslutats eller avbrutits medan
+        // anropet pågick. Sparas reservationen inte blir den annars liggande
+        // i kalendern utan att något i tjänsten känner till den.
+        const { rowCount } = await q(
+          `UPDATE poll_options o SET graph_event_id = $2, hold_error = NULL
+           FROM polls p
+           WHERE o.id = $1 AND p.id = o.poll_id AND p.status = 'open'
+             AND (o.graph_event_id IS NULL OR o.graph_event_id = $2)`,
+          [o.id, id]
+        );
+        if (rowCount) {
+          skapade++;
+        } else {
+          await graph.deleteEvent(auth.token, id).catch((err) =>
+            audit('system', 'poll_hold_release_failed', { pollId: poll.id, optionId: o.id, error: String(err.message) })
+          );
+        }
       } catch (err) {
         await q('UPDATE poll_options SET hold_error = $2 WHERE id = $1', [o.id, String(err.message).slice(0, 300)]);
         fel.push(String(err.message));
         await audit('system', 'poll_hold_failed', { pollId: poll.id, optionId: o.id, error: String(err.message) });
       }
-    }
+    });
     return { skapade, fel };
   }
 
@@ -341,6 +400,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
         deadline: poll.deadline,
         hold_calendar: poll.hold_calendar,
         hide_names: poll.hide_names,
+        bakgrund: pagar.has(poll.id),
         decided_option: poll.decided_option,
         decided_join: poll.decided_join,
         url: pollUrl(poll.public_token),
@@ -437,12 +497,14 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     if (!poll) return bad(res, 404, 'Omröstningen finns inte');
     if (poll.status !== 'closed') return bad(res, 409, 'Bara en stängd omröstning kan öppnas igen');
     await q("UPDATE polls SET status = 'open', closed_at = NULL WHERE id = $1", [poll.id]);
-    const holds = poll.hold_calendar ? await syncHolds(req.user, poll.id) : { skapade: 0 };
-    await audit(req.user.email, 'poll_reopened', { pollId: poll.id, holds: holds.skapade });
+    await audit(req.user.email, 'poll_reopened', { pollId: poll.id });
+    const user = req.user;
+    if (poll.hold_calendar) iBakgrunden(poll.id, () => syncHolds(user, poll.id));
     res.json({ ok: true });
   });
 
   router.post('/api/admin/polls/:id/decide', requireAuth, async (req, res) => {
+    await vantaPaBakgrund(int(req.params.id));
     const poll = await loadPoll(int(req.params.id), req.user.id);
     if (!poll) return bad(res, 404, 'Omröstningen finns inte');
     if (poll.status === 'decided') return bad(res, 409, 'Tiden är redan beslutad');
@@ -573,6 +635,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
   });
 
   router.post('/api/admin/polls/:id/cancel', requireAuth, async (req, res) => {
+    await vantaPaBakgrund(int(req.params.id));
     const poll = await loadPoll(int(req.params.id), req.user.id);
     if (!poll) return bad(res, 404, 'Omröstningen finns inte');
     if (poll.status === 'cancelled') return res.json({ ok: true, alreadyCancelled: true });
@@ -645,6 +708,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
    * försvinna för att underlaget städas bort.
    */
   router.delete('/api/admin/polls/:id', requireAuth, async (req, res) => {
+    await vantaPaBakgrund(int(req.params.id));
     const admin = req.user.role === 'admin';
     const poll = await loadPoll(int(req.params.id), admin ? null : req.user.id);
     if (!poll) return bad(res, 404, 'Omröstningen finns inte');
@@ -810,5 +874,14 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     });
   });
 
-  return { syncHolds, releaseHolds };
+  return {
+    syncHolds,
+    // För borttagning av en användare: vänta in pågående jobb och läs om
+    // omröstningen, så att nyss skapade reservationer också släpps.
+    releaseHolds: async (user, poll) => {
+      await vantaPaBakgrund(poll.id);
+      const farsk = await loadPoll(poll.id);
+      return farsk ? releaseHolds(user, farsk) : 0;
+    },
+  };
 };

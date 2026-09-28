@@ -1248,19 +1248,12 @@
       });
 
       const delar = [`Omröstningen är skapad. Länk: ${svar.poll.url}`];
-      if (svar.holds) {
-        delar.push(
-          svar.holds.skapade
-            ? `${svar.holds.skapade} tider reserverade i kalendern.`
-            : `Inga tider kunde reserveras i kalendern${(svar.holds.fel || []).length ? ': ' + svar.holds.fel[0] : '.'}`
-        );
-      }
-      if (svar.invitations) {
-        delar.push(`${svar.invitations.skickade} inbjudningar skickade.`);
-        if (svar.invitations.misslyckade?.length) {
-          delar.push(`Kunde inte skicka till: ${svar.invitations.misslyckade.join(', ')}.`);
-        }
-      }
+      const b = svar.bakgrund || {};
+      const pagar = [
+        b.reservationer ? `${b.reservationer} tider reserveras i kalendern` : '',
+        b.inbjudningar ? `${b.inbjudningar} inbjudningar skickas` : '',
+      ].filter(Boolean);
+      if (pagar.length) delar.push(`${pagar.join(' och ')} nu; läget visas nedan.`);
       notis(meddelande, delar.join(' '), 'ok');
 
       document.getElementById('omrostningForm').reset();
@@ -1373,6 +1366,44 @@
     }
   });
 
+  function visaReservation(cell, o, pagar) {
+    cell.textContent = o.holdOk ? 'Ja' : o.holdError ? 'Fel' : pagar ? 'Pågår…' : '–';
+    if (o.holdError) cell.title = o.holdError;
+    else cell.removeAttribute('title');
+  }
+
+  /**
+   * Reservationer och inbjudningar görs i bakgrunden efter att omröstningen
+   * sparats. Bara reservationscellerna och statusraden uppdateras, så att inget
+   * man håller på att skriva i detaljvyn försvinner.
+   */
+  function foljBakgrund(id, forsok = 0) {
+    setTimeout(async () => {
+      const ut = document.getElementById('omrostningDetalj');
+      if (ut.hidden || ut.dataset.poll !== String(id)) return;
+      let d;
+      try {
+        d = await hamta(`${bas}/api/admin/polls/${id}`);
+      } catch {
+        return;
+      }
+      for (const o of d.options) {
+        const cell = ut.querySelector(`[data-reservation="${o.id}"]`);
+        if (cell) visaReservation(cell, o, d.poll.bakgrund);
+      }
+      const rad = ut.querySelector('.bakgrundsstatus');
+      if (d.poll.bakgrund && forsok < 60) return foljBakgrund(id, forsok + 1);
+      if (rad) {
+        const klara = d.options.filter((o) => o.holdOk).length;
+        const fel = d.options.filter((o) => o.holdError).length;
+        rad.textContent = d.poll.hold_calendar
+          ? `Klart: ${klara} av ${d.options.length} tider reserverade i kalendern${fel ? `, ${fel} misslyckades (se Fel i tabellen)` : ''}.`
+          : 'Klart.';
+        rad.className = `notis notis--${fel ? 'fel' : 'ok'} bakgrundsstatus`;
+      }
+    }, 2000);
+  }
+
   async function visaOmrostning(id) {
     const ut = document.getElementById('omrostningDetalj');
     ut.hidden = false;
@@ -1385,11 +1416,25 @@
       return notis(meddelande, err.message, 'fel');
     }
     ut.textContent = '';
+    ut.dataset.poll = String(id);
 
     const rubrik = document.createElement('h3');
     rubrik.style.marginTop = '0';
     rubrik.textContent = `${d.poll.title} — ${STATUSTEXT[d.poll.status] || d.poll.status}`;
     ut.append(rubrik);
+
+    if (d.poll.bakgrund) {
+      const rad = document.createElement('p');
+      rad.className = 'notis notis--info bakgrundsstatus';
+      rad.setAttribute('role', 'status');
+      const pagar = [
+        d.poll.hold_calendar ? 'tiderna reserveras i kalendern' : '',
+        d.participants.some((p) => !p.invited) ? 'inbjudningarna skickas' : '',
+      ].filter(Boolean).join(' och ') || 'arbete pågår';
+      rad.textContent = `${pagar[0].toUpperCase()}${pagar.slice(1)}. Det här uppdateras av sig självt.`;
+      ut.append(rad);
+      foljBakgrund(id);
+    }
 
     const lank = document.createElement('p');
     lank.append(document.createTextNode('Länk att dela: '));
@@ -1435,8 +1480,8 @@
       tr.insertCell().textContent = o.rakning.kanske;
       tr.insertCell().textContent = o.rakning.nej;
       const res = tr.insertCell();
-      res.textContent = o.holdOk ? 'Ja' : o.holdError ? 'Fel' : '–';
-      if (o.holdError) res.title = o.holdError;
+      res.dataset.reservation = String(o.id);
+      visaReservation(res, o, d.poll.bakgrund);
       for (const p of d.participants) {
         const cell = tr.insertCell();
         const svar = p.svar[o.id];

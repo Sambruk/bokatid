@@ -95,9 +95,20 @@ async function token(userId) {
   });
   if (!rad(skapa.status === 201, 'Omröstningen skapades', skapa.data.error)) process.exit(1);
   const pollId = skapa.data.poll.id;
-  rad(skapa.data.holds.skapade === 3, 'Tre preliminärbokningar skapades i kalendern',
-    `skapade ${skapa.data.holds.skapade}, fel: ${(skapa.data.holds.fel || []).join('; ') || 'inga'}`);
-  rad(skapa.data.invitations.skickade === 1, 'Inbjudan skickades till deltagaren');
+  rad(skapa.data.bakgrund?.reservationer === 3 && skapa.data.bakgrund?.inbjudningar === 1,
+    'Svaret kom direkt; reservationer och inbjudan köades', JSON.stringify(skapa.data.bakgrund));
+
+  // Reservationer och inbjudningar görs i bakgrunden efter svaret.
+  let detalj;
+  for (let i = 0; i < 60; i++) {
+    detalj = (await anrop(`/api/admin/polls/${pollId}`)).data;
+    if (!detalj.poll?.bakgrund) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  const reserverade = detalj.options.filter((o) => o.holdOk).length;
+  rad(reserverade === 3, 'Tre preliminärbokningar skapades i kalendern',
+    `skapade ${reserverade}, fel: ${detalj.options.map((o) => o.holdError).filter(Boolean).join('; ') || 'inga'}`);
+  rad(detalj.participants.filter((p) => p.invited).length === 1, 'Inbjudan skickades till deltagaren');
 
   // Ligger reservationerna verkligen i kalendern, och som preliminära?
   const { rows: [agare] } = await q('SELECT user_id FROM polls WHERE id = $1', [pollId]);
