@@ -474,7 +474,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
               contentType: 'HTML',
               content:
                 `<p>Tid beslutad efter omröstning.</p>` +
-                (poll.description ? `<p>${poll.description}</p>` : ''),
+                (poll.description ? `<p>${mail.esc(poll.description)}</p>` : ''),
             },
             start: { dateTime: new Date(option.start_utc).toISOString().replace('Z', ''), timeZone: 'UTC' },
             end: { dateTime: new Date(option.end_utc).toISOString().replace('Z', ''), timeZone: 'UTC' },

@@ -474,6 +474,25 @@ async function sendPollCancelled({ poll, host, participants, reason }) {
   return { sent: failed.length === 0, errors: failed.map((f) => String(f.reason && f.reason.message)) };
 }
 
+/** Texten i värdens kalenderhändelse när bokningen skrivs via Graph. */
+function bookingEventHtml({ booking, answers, cancelUrl: url }) {
+  // Namn, organisation och svar skrivs av bokaren: utan escape kan vem som
+  // helst lägga egen HTML, till exempel länkar, i värdens kalenderhändelse.
+  const rows = Object.entries(answers || {})
+    .map(([k, v]) => `<p><strong>${esc(k)}:</strong> ${esc(v)}</p>`)
+    .join('');
+  // Avbokningslänken står först: den här texten är det enda bokaren får när
+  // Outlook sköter inbjudan, så länken måste vara lätt att hitta.
+  return (
+    `<p><strong>Behöver du avboka eller boka om?</strong><br>` +
+    `<a href="${esc(url)}">${esc(url)}</a></p>` +
+    `<p>Bokad via Boka tid.</p>` +
+    `<p>${esc(booking.invitee_name)} &lt;${esc(booking.invitee_email)}&gt;${
+      booking.invitee_org ? ` (${esc(booking.invitee_org)})` : ''
+    }</p>${rows}`
+  );
+}
+
 function answersHtml(answers) {
   const entries = Object.entries(answers || {});
   if (!entries.length) return '';
@@ -494,4 +513,6 @@ module.exports = {
   sendPollCancelled,
   buildIcs,
   locationLine,
+  esc,
+  bookingEventHtml,
 };

@@ -519,7 +519,7 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
     try {
       const created = await graph.createEvent(auth.token, {
         subject: `${eventType.title} — ${name}`,
-        bodyHtml: bookingBodyHtml({ booking, eventType, answers, cancelUrl: cancelUrl(cancelToken) }),
+        bodyHtml: mail.bookingEventHtml({ booking, answers, cancelUrl: cancelUrl(cancelToken) }),
         startIso: start.toUTC().toISO(),
         endIso: end.toUTC().toISO(),
         inviteeEmail: email,
@@ -611,22 +611,6 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
 });
 
 const cancelUrl = (token) => `${PUBLIC_URL}/avboka/${token}`;
-
-function bookingBodyHtml({ booking, eventType, answers, cancelUrl: url }) {
-  const rows = Object.entries(answers || {})
-    .map(([k, v]) => `<p><strong>${k}:</strong> ${v}</p>`)
-    .join('');
-  // Avbokningslänken står först: den här texten är det enda bokaren får när
-  // Outlook sköter inbjudan, så länken måste vara lätt att hitta.
-  return (
-    `<p><strong>Behöver du avboka eller boka om?</strong><br>` +
-    `<a href="${url}">${url}</a></p>` +
-    `<p>Bokad via Boka tid.</p>` +
-    `<p>${booking.invitee_name} &lt;${booking.invitee_email}&gt;${
-      booking.invitee_org ? ` (${booking.invitee_org})` : ''
-    }</p>${rows}`
-  );
-}
 
 /* ---------- avbokning ---------- */
 
