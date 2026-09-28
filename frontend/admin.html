@@ -228,10 +228,14 @@
 
       <div id="del-schema" role="tabpanel" aria-labelledby="flik-schema" tabindex="0" hidden>
         <h2>Veckoschema</h2>
-        <p class="meta">Tider anges i svensk tid. Lämna tomt för en dag du inte tar möten.</p>
+        <p class="meta">Tider anges i svensk tid. Lämna tomt för en dag du inte tar möten.
+           Under lunchen erbjuds inga tider; lämna lunchfälten tomma om du inte vill ha något uppehåll.</p>
         <form id="schemaForm">
           <div id="schemaRader"></div>
-          <p class="rad rad--knappar"><button type="submit">Spara veckoschema</button></p>
+          <p class="rad rad--knappar">
+            <button type="submit">Spara veckoschema</button>
+            <button type="button" class="knapp--enkel" id="sammaLunch">Använd måndagens lunch alla dagar</button>
+          </p>
         </form>
       </div>
 
@@ -805,65 +809,107 @@
   });
 
   /* ---- veckoschema ---- */
+  // Lunch sparas som ett uppehåll mellan två regler samma veckodag:
+  // 09:00–16:00 med lunch 12–13 blir 09:00–12:00 och 13:00–16:00.
+  function tidsfalt(weekday, roll, etikettText, minuter) {
+    const omslag = document.createElement('span');
+    const etikett = document.createElement('label');
+    etikett.setAttribute('for', `${roll}${weekday}`);
+    etikett.textContent = etikettText;
+    const falt = document.createElement('input');
+    falt.type = 'time';
+    falt.id = `${roll}${weekday}`;
+    falt.dataset.weekday = String(weekday);
+    falt.dataset.roll = roll;
+    falt.value = minuter == null ? '' : minuterTillKlocka(minuter);
+    omslag.append(etikett, falt);
+    return omslag;
+  }
+
   function byggSchema(rules) {
     const ut = document.getElementById('schemaRader');
     ut.textContent = '';
     VECKODAGAR.forEach((namn, i) => {
       const weekday = i + 1;
-      const regel = (rules || []).find((r) => r.weekday === weekday);
+      const regler = (rules || [])
+        .filter((r) => r.weekday === weekday)
+        .sort((a, b) => a.start_min - b.start_min);
+      const forsta = regler[0];
+      const sista = regler[regler.length - 1];
+      const harLunch = regler.length >= 2;
+
       const rad = document.createElement('div');
-      rad.className = 'rad';
-      rad.style.marginBottom = '0.5rem';
+      rad.className = 'rad schemarad';
 
       const dag = document.createElement('span');
-      dag.style.flex = '0 0 7rem';
-      dag.style.fontWeight = '600';
-      dag.style.textTransform = 'capitalize';
+      dag.className = 'schemarad__dag';
       dag.textContent = namn;
 
-      const franEtikett = document.createElement('label');
-      franEtikett.setAttribute('for', `fran${weekday}`);
-      franEtikett.textContent = 'Från';
-      const fran = document.createElement('input');
-      fran.type = 'time';
-      fran.id = `fran${weekday}`;
-      fran.dataset.weekday = String(weekday);
-      fran.dataset.roll = 'fran';
-      fran.value = regel ? minuterTillKlocka(regel.start_min) : '';
-
-      const tillEtikett = document.createElement('label');
-      tillEtikett.setAttribute('for', `till${weekday}`);
-      tillEtikett.textContent = 'Till';
-      const till = document.createElement('input');
-      till.type = 'time';
-      till.id = `till${weekday}`;
-      till.dataset.weekday = String(weekday);
-      till.dataset.roll = 'till';
-      till.value = regel ? minuterTillKlocka(regel.end_min) : '';
-
-      const franOmslag = document.createElement('span');
-      franOmslag.append(franEtikett, fran);
-      const tillOmslag = document.createElement('span');
-      tillOmslag.append(tillEtikett, till);
-
-      rad.append(dag, franOmslag, tillOmslag);
+      rad.append(
+        dag,
+        tidsfalt(weekday, 'fran', 'Från', forsta ? forsta.start_min : null),
+        tidsfalt(weekday, 'till', 'Till', sista ? sista.end_min : null),
+        tidsfalt(weekday, 'lunchfran', 'Lunch från', harLunch ? regler[0].end_min : null),
+        tidsfalt(weekday, 'lunchtill', 'Lunch till', harLunch ? regler[1].start_min : null)
+      );
       ut.append(rad);
     });
   }
+
+  const schemafalt = (weekday, roll) =>
+    document.querySelector(`#schemaRader [data-weekday="${weekday}"][data-roll="${roll}"]`);
+
+  document.getElementById('sammaLunch').addEventListener('click', () => {
+    const fran = schemafalt(1, 'lunchfran').value;
+    const till = schemafalt(1, 'lunchtill').value;
+    if (!fran || !till) {
+      return notis(meddelande, 'Fyll i lunch för måndag först.', 'fel');
+    }
+    let antal = 0;
+    for (let weekday = 2; weekday <= 7; weekday++) {
+      // Dagar utan arbetstid ska inte få en lunch.
+      if (!schemafalt(weekday, 'fran').value) continue;
+      schemafalt(weekday, 'lunchfran').value = fran;
+      schemafalt(weekday, 'lunchtill').value = till;
+      antal++;
+    }
+    notis(meddelande, `Lunch ${fran}–${till} ifylld för ${antal} dagar till. Glöm inte att spara.`, 'ok');
+  });
 
   document.getElementById('schemaForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const rules = [];
     for (let weekday = 1; weekday <= 7; weekday++) {
-      const fran = document.querySelector(`[data-weekday="${weekday}"][data-roll="fran"]`).value;
-      const till = document.querySelector(`[data-weekday="${weekday}"][data-roll="till"]`).value;
-      if (!fran && !till) continue;
+      const dagnamn = VECKODAGAR[weekday - 1];
+      const fran = schemafalt(weekday, 'fran').value;
+      const till = schemafalt(weekday, 'till').value;
+      const lunchFran = schemafalt(weekday, 'lunchfran').value;
+      const lunchTill = schemafalt(weekday, 'lunchtill').value;
+      if (!fran && !till) {
+        if (lunchFran || lunchTill) {
+          return notis(meddelande, `${dagnamn}: lunch kräver att dagen har arbetstid.`, 'fel');
+        }
+        continue;
+      }
       const startMin = klockaTillMinuter(fran);
       const endMin = klockaTillMinuter(till);
       if (startMin == null || endMin == null || endMin <= startMin) {
-        return notis(meddelande, `Kontrollera tiderna för ${VECKODAGAR[weekday - 1]}.`, 'fel');
+        return notis(meddelande, `Kontrollera tiderna för ${dagnamn}.`, 'fel');
       }
-      rules.push({ weekday, start_min: startMin, end_min: endMin });
+      if (!lunchFran && !lunchTill) {
+        rules.push({ weekday, start_min: startMin, end_min: endMin });
+        continue;
+      }
+      const lStart = klockaTillMinuter(lunchFran);
+      const lSlut = klockaTillMinuter(lunchTill);
+      if (lStart == null || lSlut == null) {
+        return notis(meddelande, `${dagnamn}: fyll i både när lunchen börjar och slutar, eller lämna båda tomma.`, 'fel');
+      }
+      if (lSlut <= lStart || lStart <= startMin || lSlut >= endMin) {
+        return notis(meddelande, `${dagnamn}: lunchen måste ligga inom arbetstiden ${fran}–${till}.`, 'fel');
+      }
+      rules.push({ weekday, start_min: startMin, end_min: lStart });
+      rules.push({ weekday, start_min: lSlut, end_min: endMin });
     }
     try {
       await skicka(`${bas}/api/admin/availability`, { rules }, 'PUT');

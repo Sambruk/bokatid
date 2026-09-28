@@ -246,6 +246,10 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .rad--knappar { justify-content: flex-start; }
 .rad--knappar > * { flex: 0 0 auto; }
 
+/* Veckoschemat: dag, arbetstid och lunch på en rad. */
+.schemarad { margin-bottom: 0.5rem; }
+.schemarad__dag { flex: 0 0 7rem !important; font-weight: 600; text-transform: capitalize; align-self: center; }
+
 /* Frågor till bokaren i adminvyn: en rad per fråga. */
 .fraga-rad { padding: 0 0 0.75rem; margin: 0 0 0.25rem; border-bottom: 1px solid var(--linje); }
 .fraga-rad__etikett { margin-top: 0.5rem; }
