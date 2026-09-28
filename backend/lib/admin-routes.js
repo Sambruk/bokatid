@@ -4,7 +4,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { q, audit } = require('./db');
+const { q, pool, audit } = require('./db');
+const { loadPoll } = require('./polls-sql');
 const { hashPassword, randomToken } = require('./crypto');
 const { tema } = require('./farg');
 const feedSync = require('./feed-sync');
@@ -44,7 +45,7 @@ async function publikOrganisation() {
 }
 
 module.exports = function adminRoutes({ router, requireAuth, helpers }) {
-  const { bad, str, int, isEmail } = helpers;
+  const { bad, str, int, isEmail, kommandeBokningar, releaseHolds } = helpers;
 
   async function requireAdmin(req, res, next) {
     if (req.user.role !== 'admin') return bad(res, 403, 'Kräver superadmin');
@@ -227,6 +228,65 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
       }
       throw err;
     }
+  });
+
+  router.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+    const id = int(req.params.id);
+    const { rows: fanns } = await q('SELECT id, name, email, role, active, photo_file FROM users WHERE id = $1', [id]);
+    const anv = fanns[0];
+    if (!anv) return bad(res, 404, 'Användaren finns inte');
+    if (id === req.user.id) return bad(res, 409, 'Du kan inte ta bort dig själv');
+    if (anv.role === 'admin') {
+      const { rows: kvar } = await q(
+        "SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND active AND id <> $1",
+        [id]
+      );
+      if (!kvar[0].n) return bad(res, 409, 'Det måste finnas minst en aktiv superadmin');
+    }
+
+    const n = await kommandeBokningar('user', id);
+    if (n) {
+      return bad(
+        res,
+        409,
+        `${anv.name} har ${n} kommande ${n === 1 ? 'möte' : 'möten'} som värd eller medvärd. ` +
+          `Avboka ${n === 1 ? 'det' : 'dem'} först, eller stäng av kontot i stället.`
+      );
+    }
+
+    // Reservationer från öppna omröstningar ligger i personens kalender och
+    // måste släppas medan kalenderkopplingen ännu finns.
+    const { rows: omr } = await q('SELECT id FROM polls WHERE user_id = $1', [id]);
+    let slapptaReservationer = 0;
+    for (const { id: pollId } of omr) {
+      const poll = await loadPoll(pollId);
+      if (poll) slapptaReservationer += await releaseHolds({ id }, poll);
+    }
+
+    const client = await pool.connect();
+    const antal = {};
+    try {
+      await client.query('BEGIN');
+      // Bokningar har ON DELETE RESTRICT mot både mötestyp och värd.
+      antal.bokningar = (await client.query(
+        'DELETE FROM bookings WHERE user_id = $1 OR event_type_id IN (SELECT id FROM event_types WHERE user_id = $1)',
+        [id]
+      )).rowCount;
+      antal.motestyper = (await client.query('DELETE FROM event_types WHERE user_id = $1', [id])).rowCount;
+      antal.omrostningar = omr.length;
+      // Resten (schema, undantag, sessioner, kalenderkoppling, omröstningar,
+      // medvärdskap) följer med via ON DELETE CASCADE.
+      await client.query('DELETE FROM users WHERE id = $1', [id]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    taBortFil(anv.photo_file);
+    await audit(req.user.email, 'user_deleted', { userId: id, epost: anv.email, ...antal, slapptaReservationer });
+    res.json({ ok: true, ...antal, slapptaReservationer });
   });
 
   router.post('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req, res) => {

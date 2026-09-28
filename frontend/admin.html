@@ -653,32 +653,44 @@
       const meta = document.createElement('p');
       meta.className = 'meta';
       const vardar = Array.isArray(t.medvardar) && t.medvardar.length
-        ? ` · värdar: du + ${t.medvardar.map((m) => m.name).join(', ')}`
+        ? ` · värdar: ${t.egen ? 'du' : t.agare_namn} + ${t.medvardar.map((m) => m.name).join(', ')}`
         : '';
-      meta.textContent = `${t.duration_min} min · ${t.location_type} · buffert ${t.buffer_before}/${t.buffer_after} min · ${t.max_days_ahead} dagar framåt${vardar}`;
+      const agare = t.egen ? '' : `Ägare: ${t.agare_namn} · `;
+      meta.textContent = `${agare}${t.duration_min} min · ${t.location_type} · buffert ${t.buffer_before}/${t.buffer_after} min · ${t.max_days_ahead} dagar framåt${vardar}`;
       const lank = document.createElement('p');
       const a = document.createElement('a');
-      a.href = `${bas}/${jag.user.slug}/${t.slug}`;
-      a.textContent = `${location.origin}${bas}/${jag.user.slug}/${t.slug}`;
+      a.href = `${bas}/${t.agare_slug}/${t.slug}`;
+      a.textContent = `${location.origin}${bas}/${t.agare_slug}/${t.slug}`;
       lank.append(a);
       const knappar = document.createElement('p');
       knappar.className = 'rad rad--knappar';
-      const redigera = document.createElement('button');
-      redigera.className = 'knapp--enkel';
-      redigera.textContent = 'Redigera';
-      redigera.addEventListener('click', () => fyllFormular(t));
-      knappar.append(redigera);
-      if (t.active) {
-        const avaktivera = document.createElement('button');
-        avaktivera.className = 'knapp--fara';
-        avaktivera.textContent = 'Avaktivera';
-        avaktivera.addEventListener('click', async () => {
-          if (!confirm(`Avaktivera "${t.title}"? Befintliga bokningar påverkas inte.`)) return;
-          await skicka(`${bas}/api/admin/event-types/${t.id}`, undefined, 'DELETE');
-          laddaTyper();
-        });
-        knappar.append(avaktivera);
+      // Andras mötestyper kan superadmin bara ta bort, inte redigera.
+      if (t.egen) {
+        const redigera = document.createElement('button');
+        redigera.className = 'knapp--enkel';
+        redigera.textContent = 'Redigera';
+        redigera.addEventListener('click', () => fyllFormular(t));
+        knappar.append(redigera);
       }
+      const taBort = document.createElement('button');
+      taBort.className = 'knapp--fara';
+      taBort.textContent = 'Ta bort';
+      taBort.setAttribute('aria-label', `Ta bort ${t.title}`);
+      taBort.addEventListener('click', async () => {
+        const vems = t.egen ? '' : ` (ägs av ${t.agare_namn})`;
+        if (!confirm(`Ta bort "${t.title}"${vems}?\n\nBokningslänken slutar fungera och gamla bokningar på mötestypen raderas. Det går inte att ångra.\n\nVill du bara stoppa nya bokningar: redigera och kryssa ur Aktiv i stället.`)) return;
+        taBort.disabled = true;
+        try {
+          await skicka(`${bas}/api/admin/event-types/${t.id}`, undefined, 'DELETE');
+          if (String(document.getElementById('typId').value) === String(t.id)) fyllFormular(null);
+          notis(meddelande, `"${t.title}" är borttagen.`, 'ok');
+          laddaTyper();
+        } catch (err) {
+          notis(meddelande, err.message, 'fel');
+          taBort.disabled = false;
+        }
+      });
+      knappar.append(taBort);
       kort.append(rubrik, meta, lank, knappar);
       ut.append(kort);
     }
@@ -1276,15 +1288,18 @@
       ut.append(p);
       return;
     }
+    // Superadmin ser alla omröstningar; kolumnen behövs bara när några är andras.
+    const visaAgare = polls.some((p) => !p.egen);
     const omslag = document.createElement('div');
     omslag.className = 'tabellomslag';
     const tabell = document.createElement('table');
     tabell.innerHTML =
-      '<thead><tr><th>Rubrik</th><th>Status</th><th>Tider</th><th>Svar</th><th></th></tr></thead>';
+      `<thead><tr><th>Rubrik</th>${visaAgare ? '<th>Ägare</th>' : ''}<th>Status</th><th>Tider</th><th>Svar</th><th></th></tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const p of polls) {
       const tr = tbody.insertRow();
       tr.insertCell().textContent = p.title;
+      if (visaAgare) tr.insertCell().textContent = p.egen ? 'Du' : p.agare_namn;
       tr.insertCell().textContent = STATUSTEXT[p.status] || p.status;
       tr.insertCell().textContent = p.antal_tider;
       tr.insertCell().textContent = `${p.antal_svar} av ${p.antal_deltagare}`;
@@ -1298,12 +1313,13 @@
       taBort.style.marginLeft = '0.35rem';
       taBort.textContent = 'Ta bort';
       taBort.addEventListener('click', async () => {
+        const vems = p.egen ? '' : ` (skapad av ${p.agare_namn})`;
         const varning =
           p.status === 'open'
-            ? `Ta bort "${p.title}"?\n\nReservationerna släpps i kalendern, och svaren som lämnats försvinner. Deltagarna får inget besked — avbryt omröstningen i stället om de ska informeras.`
+            ? `Ta bort "${p.title}"${vems}?\n\nReservationerna släpps i kalendern, och svaren som lämnats försvinner. Deltagarna får inget besked — avbryt omröstningen i stället om de ska informeras.`
             : p.status === 'decided'
-              ? `Ta bort "${p.title}"?\n\nDet bokade mötet ligger kvar i kalendern, men underlaget med deltagare och svar tas bort.`
-              : `Ta bort "${p.title}"? Deltagare och svar tas bort.`;
+              ? `Ta bort "${p.title}"${vems}?\n\nDet bokade mötet ligger kvar i kalendern, men underlaget med deltagare och svar tas bort.`
+              : `Ta bort "${p.title}"${vems}? Deltagare och svar tas bort.`;
         if (!confirm(varning)) return;
         taBort.disabled = true;
         try {
@@ -1321,7 +1337,12 @@
       });
 
       const atgarder = tr.insertCell();
-      atgarder.append(knapp, taBort);
+      // Andras omröstningar kan superadmin bara ta bort, inte öppna.
+      if (p.egen) atgarder.append(knapp, taBort);
+      else {
+        taBort.style.marginLeft = '0';
+        atgarder.append(taBort);
+      }
     }
     tabell.append(tbody);
     omslag.append(tabell);
@@ -1712,6 +1733,32 @@
       });
 
       atgarder.append(andra, losen);
+
+      if (!jagSjalv) {
+        const taBort = document.createElement('button');
+        taBort.className = 'knapp--fara';
+        taBort.style.marginLeft = '0.35rem';
+        taBort.textContent = 'Ta bort';
+        taBort.setAttribute('aria-label', `Ta bort ${u.name}`);
+        taBort.addEventListener('click', async () => {
+          if (!confirm(`Ta bort ${u.name} helt?\n\nKontot, mötestyperna, omröstningarna, veckoschemat och gamla bokningar raderas, och personens bokningslänkar slutar fungera. Det går inte att ångra.\n\nVill du bara stänga ute personen: använd Ändra och kryssa ur Aktiv i stället.`)) return;
+          taBort.disabled = true;
+          try {
+            const r = await skicka(`${bas}/api/admin/users/${u.id}`, undefined, 'DELETE');
+            const delar = [`${u.name} är borttagen.`];
+            if (r.motestyper) delar.push(`${r.motestyper} mötestyper`);
+            if (r.omrostningar) delar.push(`${r.omrostningar} omröstningar`);
+            if (r.bokningar) delar.push(`${r.bokningar} gamla bokningar`);
+            notis(meddelande, delar.length > 1 ? `${delar[0]} Raderat: ${delar.slice(1).join(', ')}.` : delar[0], 'ok');
+            if (String(document.getElementById('aId').value) === String(u.id)) fyllAnvandarFormular(null);
+            await laddaAnvandare();
+          } catch (err) {
+            notis(meddelande, err.message, 'fel');
+            taBort.disabled = false;
+          }
+        });
+        atgarder.append(taBort);
+      }
     }
   }
 

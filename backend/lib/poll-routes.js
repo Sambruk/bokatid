@@ -294,13 +294,19 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
   /* ---------- admin: lista och visa ---------- */
 
   router.get('/api/admin/polls', requireAuth, async (req, res) => {
+    // Superadmin ser alla omröstningar för att kunna ta bort dem; öppna och
+    // hantera dem kan bara den som skapade dem.
+    const admin = req.user.role === 'admin';
     const { rows } = await q(
       `SELECT p.id, p.title, p.status, p.deadline, p.created_at, p.duration_min, p.public_token,
+              u.name AS agare_namn, (p.user_id = $1) AS egen,
               (SELECT count(*) FROM poll_options o WHERE o.poll_id = p.id) AS antal_tider,
               (SELECT count(*) FROM poll_participants d WHERE d.poll_id = p.id) AS antal_deltagare,
               (SELECT count(*) FROM poll_participants d WHERE d.poll_id = p.id AND d.responded_at IS NOT NULL) AS antal_svar
-       FROM polls p WHERE p.user_id = $1 ORDER BY p.created_at DESC LIMIT 100`,
-      [req.user.id]
+       FROM polls p JOIN users u ON u.id = p.user_id
+       WHERE $2 OR p.user_id = $1
+       ORDER BY (p.user_id = $1) DESC, p.created_at DESC LIMIT 200`,
+      [req.user.id, admin]
     );
     res.json({
       polls: rows.map((p) => ({
@@ -639,17 +645,21 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
    * försvinna för att underlaget städas bort.
    */
   router.delete('/api/admin/polls/:id', requireAuth, async (req, res) => {
-    const poll = await loadPoll(int(req.params.id), req.user.id);
+    const admin = req.user.role === 'admin';
+    const poll = await loadPoll(int(req.params.id), admin ? null : req.user.id);
     if (!poll) return bad(res, 404, 'Omröstningen finns inte');
 
     // Öppna omröstningar har reservationer i kalendern som måste släppas först.
-    const slappta = await releaseHolds(req.user, poll);
+    // Reservationerna ligger i ÄGARENS kalender, även när admin tar bort.
+    const slappta = await releaseHolds({ id: poll.user_id }, poll);
 
     const kvarIKalendern = poll.status === 'decided' && poll.decided_event;
-    await q('DELETE FROM polls WHERE id = $1 AND user_id = $2', [poll.id, req.user.id]);
+    await q('DELETE FROM polls WHERE id = $1', [poll.id]);
 
     await audit(req.user.email, 'poll_deleted', {
       pollId: poll.id,
+      agare: poll.user_id,
+      somAdmin: poll.user_id !== req.user.id,
       status: poll.status,
       slapptaReservationer: slappta,
       antalDeltagare: poll.participants.length,

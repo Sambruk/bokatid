@@ -1022,13 +1022,19 @@ router.post('/api/admin/ms/disconnect', requireAuth, async (req, res) => {
 /* ---------- admin: mötestyper ---------- */
 
 router.get('/api/admin/event-types', requireAuth, async (req, res) => {
+  // Superadmin ser alla användares mötestyper så att hen kan ta bort dem;
+  // redigera kan bara ägaren.
+  const admin = req.user.role === 'admin';
   const { rows } = await q(
-    `SELECT e.*, COALESCE(
-       (SELECT json_agg(json_build_object('id', u.id, 'name', u.name) ORDER BY u.name)
-        FROM event_type_hosts h JOIN users u ON u.id = h.user_id
-        WHERE h.event_type_id = e.id AND u.active), '[]') AS medvardar
-     FROM event_types e WHERE e.user_id = $1 ORDER BY e.title`,
-    [req.user.id]
+    `SELECT e.*, u.name AS agare_namn, u.slug AS agare_slug, (e.user_id = $1) AS egen,
+       COALESCE(
+       (SELECT json_agg(json_build_object('id', u2.id, 'name', u2.name) ORDER BY u2.name)
+        FROM event_type_hosts h JOIN users u2 ON u2.id = h.user_id
+        WHERE h.event_type_id = e.id AND u2.active), '[]') AS medvardar
+     FROM event_types e JOIN users u ON u.id = e.user_id
+     WHERE $2 OR e.user_id = $1
+     ORDER BY (e.user_id = $1) DESC, u.name, e.title`,
+    [req.user.id, admin]
   );
   res.json({ eventTypes: rows });
 });
@@ -1125,15 +1131,65 @@ router.put('/api/admin/event-types/:id', requireAuth, async (req, res) => {
   res.json({ eventType: rows[0] });
 });
 
+/**
+ * Kommande bekräftade bokningar spärrar borttagning: bokaren har ett möte i sin
+ * kalender och ska få ett avbokningsbesked, inte ett möte som tyst försvinner.
+ */
+async function kommandeBokningar(kolumn, id) {
+  const villkor = {
+    event_type: 'b.event_type_id = $1',
+    user: 'b.user_id = $1 OR EXISTS (SELECT 1 FROM booking_hosts h WHERE h.booking_id = b.id AND h.user_id = $1)',
+  }[kolumn];
+  const { rows } = await q(
+    `SELECT count(*)::int AS n FROM bookings b WHERE (${villkor}) AND b.status = 'confirmed' AND b.end_utc > now()`,
+    [id]
+  );
+  return rows[0].n;
+}
+
 router.delete('/api/admin/event-types/:id', requireAuth, async (req, res) => {
-  // Bokningar pekar på mötestypen, så den avaktiveras i stället för att raderas.
-  const { rows } = await q('UPDATE event_types SET active = FALSE WHERE id = $1 AND user_id = $2 RETURNING id', [
+  const admin = req.user.role === 'admin';
+  const { rows } = await q('SELECT id, title, slug, user_id FROM event_types WHERE id = $1 AND ($2 OR user_id = $3)', [
     int(req.params.id),
+    admin,
     req.user.id,
   ]);
-  if (!rows[0]) return bad(res, 404, 'Mötestypen finns inte');
-  await audit(req.user.email, 'event_type_deactivated', { id: rows[0].id });
-  res.json({ ok: true });
+  const typ = rows[0];
+  if (!typ) return bad(res, 404, 'Mötestypen finns inte');
+
+  const n = await kommandeBokningar('event_type', typ.id);
+  if (n) {
+    return bad(
+      res,
+      409,
+      `"${typ.title}" har ${n} kommande ${n === 1 ? 'bokning' : 'bokningar'}. Avboka ${n === 1 ? 'den' : 'dem'} först, ` +
+        'eller avaktivera mötestypen så att inga nya bokningar tas emot.'
+    );
+  }
+
+  // Gamla och avbokade bokningar raderas med; gallringen hade tagit dem ändå.
+  const client = await pool.connect();
+  let borttagnaBokningar = 0;
+  try {
+    await client.query('BEGIN');
+    const del = await client.query('DELETE FROM bookings WHERE event_type_id = $1', [typ.id]);
+    borttagnaBokningar = del.rowCount;
+    await client.query('DELETE FROM event_types WHERE id = $1', [typ.id]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  await audit(req.user.email, 'event_type_deleted', {
+    id: typ.id,
+    slug: typ.slug,
+    agare: typ.user_id,
+    somAdmin: typ.user_id !== req.user.id,
+    borttagnaBokningar,
+  });
+  res.json({ ok: true, borttagnaBokningar });
 });
 
 /* ---------- admin: veckoschema och undantag ---------- */
@@ -1342,10 +1398,21 @@ router.post('/api/extern/:token', async (req, res) => {
 
 /* ---------- superadmin och organisation ---------- */
 
+// Omröstningsrutterna registreras längre ned; borttagning av en användare
+// behöver ändå kunna släppa hens reservationer, därav den sena bindningen.
+let pollApi = null;
+
 const { requireAdmin } = require('./lib/admin-routes')({
   router,
   requireAuth,
-  helpers: { bad, str, int, isEmail },
+  helpers: {
+    bad,
+    str,
+    int,
+    isEmail,
+    kommandeBokningar,
+    releaseHolds: (user, poll) => pollApi.releaseHolds(user, poll),
+  },
 });
 
 // Loggan serveras från projektets media-katalog.
@@ -1354,7 +1421,7 @@ router.use('/media', express.static(path.join(__dirname, 'media'), { maxAge: '1h
 
 /* ---------- omröstningar ---------- */
 
-require('./lib/poll-routes')({
+pollApi = require('./lib/poll-routes')({
   router,
   requireAuth,
   helpers: { bad, str, int, isEmail, rateLimit, accessTokenFor, busyFor, loadSchedule, PUBLIC_URL },
