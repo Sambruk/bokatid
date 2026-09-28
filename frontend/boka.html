@@ -219,15 +219,38 @@
    * Ett felmeddelande räcker inte: den som inte ser sidan behöver veta VILKET
    * fält som är fel. Fältet markeras och fokus flyttas dit (WCAG 3.3.1).
    */
-  function visaFaltfel(falt, text) {
-    for (const el of document.querySelectorAll('#formular [aria-invalid]')) el.removeAttribute('aria-invalid');
-    notis(meddelande, text, 'fel');
-    if (falt) {
-      falt.setAttribute('aria-invalid', 'true');
-      falt.focus();
+  function rensaFaltfel() {
+    for (const el of document.querySelectorAll('#formular [aria-invalid]')) {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
     }
+    for (const el of document.querySelectorAll('#formular .faltfel')) el.remove();
+  }
+
+  function visaFaltfel(falt, text) {
+    rensaFaltfel();
+    if (!falt) {
+      notis(meddelande, text, 'fel');
+      return false;
+    }
+    // Felet skrivs under fältet: notisen överst på sidan syns inte när man
+    // står nere i formuläret.
+    rensaNotis(meddelande);
+    const fel = document.createElement('p');
+    fel.className = 'faltfel';
+    fel.id = `${falt.id}_fel`;
+    fel.textContent = text;
+    falt.after(fel);
+    falt.setAttribute('aria-invalid', 'true');
+    falt.setAttribute('aria-describedby', fel.id);
+    falt.focus();
     return false;
   }
+
+  // Markeringen släpps så fort man börjar rätta fältet.
+  document.getElementById('formular').addEventListener('input', (ev) => {
+    if (ev.target.getAttribute('aria-invalid') === 'true') rensaFaltfel();
+  });
 
   /** Gissar vilket fält servern klagade på, så markeringen hamnar rätt. */
   function faltForFel(text) {

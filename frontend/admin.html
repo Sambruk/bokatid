@@ -211,8 +211,13 @@
             <div id="vardarLista"></div>
           </fieldset>
 
-          <label for="fragor">Frågor till bokaren <span class="hjalptext">(en per rad, avsluta med * för obligatorisk)</span></label>
-          <textarea id="fragor" style="min-height:4rem"></textarea>
+          <fieldset id="fragorFalt">
+            <legend>Frågor till bokaren</legend>
+            <p class="meta" style="margin-top:0">Visas i bokningsformuläret. En obligatorisk fråga
+               måste besvaras innan tiden kan bokas.</p>
+            <div id="fragorLista"></div>
+            <p style="margin-bottom:0"><button type="button" class="knapp--enkel" id="laggTillFraga">Lägg till fråga</button></p>
+          </fieldset>
           <p><label><input type="checkbox" id="aktiv" checked> Aktiv och bokningsbar</label></p>
           <p class="rad rad--knappar">
             <button type="submit" id="sparaTyp">Spara mötestyp</button>
@@ -533,19 +538,96 @@
   });
 
   /* ---- mötestyper ---- */
-  function fragorTillText(fragor) {
-    return (fragor || []).map((f) => f.key + (f.required ? ' *' : '')).join('\n');
+  // Servern sparar högst tio frågor; fler rader skulle tyst försvinna.
+  const MAX_FRAGOR = 10;
+  let fragaNr = 0;
+
+  function numreraFragor() {
+    const rader = [...document.querySelectorAll('#fragorLista .fraga-rad')];
+    rader.forEach((rad, i) => {
+      rad.querySelector('.fraga-rad__etikett').textContent = `Fråga ${i + 1}`;
+      rad.querySelector('[data-ta-bort]').setAttribute('aria-label', `Ta bort fråga ${i + 1}`);
+    });
+    const lista = document.getElementById('fragorLista');
+    let tom = lista.querySelector('.fragor-tom');
+    if (!rader.length && !tom) {
+      tom = document.createElement('p');
+      tom.className = 'meta fragor-tom';
+      tom.textContent = 'Inga frågor. Bokaren anger bara namn, e-post och organisation.';
+      lista.append(tom);
+    } else if (rader.length && tom) {
+      tom.remove();
+    }
+    const knapp = document.getElementById('laggTillFraga');
+    knapp.disabled = rader.length >= MAX_FRAGOR;
+    knapp.textContent = rader.length >= MAX_FRAGOR ? `Högst ${MAX_FRAGOR} frågor` : 'Lägg till fråga';
   }
-  function textTillFragor(text) {
-    return String(text || '')
-      .split('\n')
-      .map((rad) => rad.trim())
-      .filter(Boolean)
-      .map((rad) => {
-        const required = rad.endsWith('*');
-        return { key: rad.replace(/\*$/, '').trim(), type: 'textarea', required };
-      });
+
+  function laggTillFragerad(fraga = {}) {
+    const n = ++fragaNr;
+    const rad = document.createElement('div');
+    rad.className = 'fraga-rad';
+
+    const etikett = document.createElement('label');
+    etikett.className = 'fraga-rad__etikett';
+    etikett.setAttribute('for', `fraga_${n}`);
+    const text = document.createElement('input');
+    text.id = `fraga_${n}`;
+    text.maxLength = 160;
+    text.value = fraga.key || '';
+    text.dataset.fragetext = '1';
+
+    const valRad = document.createElement('div');
+    valRad.className = 'fraga-rad__val';
+    const kryss = document.createElement('input');
+    kryss.type = 'checkbox';
+    kryss.id = `fraga_${n}_krav`;
+    kryss.checked = Boolean(fraga.required);
+    kryss.dataset.obligatorisk = '1';
+    const kryssEtikett = document.createElement('label');
+    kryssEtikett.setAttribute('for', kryss.id);
+    kryssEtikett.textContent = 'Obligatorisk';
+    const bort = document.createElement('button');
+    bort.type = 'button';
+    bort.className = 'knapp--enkel';
+    bort.dataset.taBort = '1';
+    bort.textContent = 'Ta bort';
+    bort.addEventListener('click', () => {
+      // Fokus får inte hamna på body när knappen försvinner.
+      const nasta = rad.nextElementSibling || rad.previousElementSibling;
+      rad.remove();
+      numreraFragor();
+      (nasta?.querySelector('[data-fragetext]') || document.getElementById('laggTillFraga')).focus();
+    });
+    valRad.append(kryss, kryssEtikett, bort);
+
+    rad.append(etikett, text, valRad);
+    document.getElementById('fragorLista').append(rad);
+    numreraFragor();
+    return text;
   }
+
+  function fyllFragor(fragor) {
+    document.getElementById('fragorLista').textContent = '';
+    for (const f of fragor || []) laggTillFragerad(f);
+    numreraFragor();
+  }
+
+  function lasFragor() {
+    return [...document.querySelectorAll('#fragorLista .fraga-rad')]
+      .map((rad) => ({
+        key: rad.querySelector('[data-fragetext]').value.trim(),
+        type: 'textarea',
+        required: rad.querySelector('[data-obligatorisk]').checked,
+      }))
+      .filter((f) => f.key);
+  }
+
+  document.getElementById('laggTillFraga').addEventListener('click', () => {
+    if (document.querySelectorAll('#fragorLista .fraga-rad').length >= MAX_FRAGOR) return;
+    laggTillFragerad().focus();
+  });
+  numreraFragor();
 
   async function laddaTyper() {
     const { eventTypes } = await hamta(`${bas}/api/admin/event-types`);
@@ -612,7 +694,7 @@
     document.getElementById('maxperdag').value = t && t.max_per_day ? t.max_per_day : '';
     document.getElementById('platstyp').value = t ? t.location_type : 'teams';
     document.getElementById('platstext').value = t ? t.location_text || '' : '';
-    document.getElementById('fragor').value = t ? fragorTillText(t.questions) : '';
+    fyllFragor(t ? t.questions : []);
     document.getElementById('aktiv').checked = t ? t.active : true;
     document.getElementById('formularRubrik').textContent = t ? `Redigera: ${t.title}` : 'Ny mötestyp';
     document.getElementById('avbrytTyp').hidden = !t;
@@ -707,7 +789,7 @@
       max_per_day: document.getElementById('maxperdag').value ? Number(document.getElementById('maxperdag').value) : null,
       location_type: document.getElementById('platstyp').value,
       location_text: document.getElementById('platstext').disabled ? '' : document.getElementById('platstext').value,
-      questions: textTillFragor(document.getElementById('fragor').value),
+      questions: lasFragor(),
       hosts: valdaVardar(),
       active: document.getElementById('aktiv').checked,
     };

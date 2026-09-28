@@ -225,6 +225,12 @@ input, select, textarea {
   color: var(--text);
 }
 textarea { min-height: 6rem; resize: vertical; }
+/* Fält med fel: färgen bär inte ensam budskapet, texten under fältet gör det. */
+input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] {
+  background: #fdf1f0;
+  border: 2px solid var(--fel);
+}
+.faltfel { color: var(--fel); font-weight: 600; font-size: 0.92rem; margin: 0.3rem 0 0; }
 /* Beröringsyta minst 24x24 px (WCAG 2.2 2.5.8). Standardstorleken i
    webbläsaren är omkring 13 px, vilket är för litet att träffa med fingret. */
 input[type="checkbox"], input[type="radio"] { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; }
@@ -239,6 +245,13 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .rad > * { flex: 1 1 8rem; }
 .rad--knappar { justify-content: flex-start; }
 .rad--knappar > * { flex: 0 0 auto; }
+
+/* Frågor till bokaren i adminvyn: en rad per fråga. */
+.fraga-rad { padding: 0 0 0.75rem; margin: 0 0 0.25rem; border-bottom: 1px solid var(--linje); }
+.fraga-rad__etikett { margin-top: 0.5rem; }
+.fraga-rad__val { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+.fraga-rad__val label { display: inline; margin: 0 auto 0 0; font-weight: 400; }
+.fraga-rad__val input[type="checkbox"] { width: 1.5rem; }
 
 .notis { border-radius: var(--radie); padding: 0.75rem 1rem; margin: 0 0 1rem; border: 1px solid; }
 .notis--fel { background: #fdf1f0; border-color: #e3b7b3; color: #7f1c16; }
