@@ -91,9 +91,35 @@ test('datumundantag med egna tider ersätter veckoschemat', () => {
 });
 
 test('tak per dag stänger dagen när den är full', () => {
-  const busy = [{ start: '2026-01-15T08:00:00Z', end: '2026-01-15T08:30:00Z' }];
+  const bokning = [{ start: '2026-01-15T08:00:00Z', end: '2026-01-15T08:30:00Z' }];
   const eventType = { ...ET, max_per_day: 1 };
-  const [day] = availableSlots({ ...base, eventType, busy, fromDate: '2026-01-15', toDate: '2026-01-15' });
+  const [day] = availableSlots({ ...base, eventType, busy: bokning, booked: bokning, fromDate: '2026-01-15', toDate: '2026-01-15' });
+  assert.equal(day.slots.length, 0);
+});
+
+test('tak per dag räknar inte värdens övriga möten i kalendern', () => {
+  // Fyra möten i Outlook men inga bokningar via tjänsten: dagen ska vara öppen
+  // mellan mötena. Förr stängde de hela dagen när taket var 4.
+  const outlook = [8, 9, 10, 11].map((h) => ({
+    start: `2026-01-15T${String(h).padStart(2, '0')}:00:00Z`,
+    end: `2026-01-15T${String(h).padStart(2, '0')}:30:00Z`,
+  }));
+  const eventType = { ...ET, max_per_day: 4 };
+  const [day] = availableSlots({ ...base, eventType, busy: outlook, booked: [], fromDate: '2026-01-15', toDate: '2026-01-15' });
+  assert.ok(day.slots.length > 0, 'dagen ska ha lediga tider');
+  for (const s of day.slots) {
+    const krock = outlook.some((m) => new Date(s.start) < new Date(m.end) && new Date(s.end) > new Date(m.start));
+    assert.ok(!krock, `${s.start} krockar med ett möte`);
+  }
+});
+
+test('tak per dag stänger dagen vid fyra bokningar via tjänsten', () => {
+  const bokningar = [8, 9, 10, 11].map((h) => ({
+    start: `2026-01-15T${String(h).padStart(2, '0')}:00:00Z`,
+    end: `2026-01-15T${String(h).padStart(2, '0')}:30:00Z`,
+  }));
+  const eventType = { ...ET, max_per_day: 4 };
+  const [day] = availableSlots({ ...base, eventType, busy: bokningar, booked: bokningar, fromDate: '2026-01-15', toDate: '2026-01-15' });
   assert.equal(day.slots.length, 0);
 });
 

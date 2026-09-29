@@ -157,6 +157,9 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
     [user.id, fromIso, toIso]
   );
   const busy = rows.map((r) => ({ start: r.start, end: r.end }));
+  // Det taket "max per dag" räknar: möten bokade genom tjänsten, inte värdens
+  // övriga kalender.
+  const booked = [...busy];
 
   /*
    * Omröstningarnas tider blockeras också: varje öppet förslag är en
@@ -166,7 +169,7 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
    * ignorePollId används när en omröstning själv räknar fram sina tider.
    */
   const { rows: pollRader } = await q(
-    `SELECT o.start_utc AS start, o.end_utc AS end
+    `SELECT o.start_utc AS start, o.end_utc AS end, p.status
      FROM poll_options o JOIN polls p ON p.id = o.poll_id
      WHERE p.user_id = $1 AND o.end_utc > $2 AND o.start_utc < $3
        AND ($4::int IS NULL OR p.id <> $4)
@@ -177,6 +180,7 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
     [user.id, fromIso, toIso, ignorePollId]
   );
   busy.push(...pollRader.map((r) => ({ start: r.start, end: r.end })));
+  booked.push(...pollRader.filter((r) => r.status === 'decided').map((r) => ({ start: r.start, end: r.end })));
 
   /*
    * En extern part delar sina tider genom en prenumeration i stället för en
@@ -187,7 +191,7 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
     busy.push(...(await feedSync.sparadeTider(user.id, fromIso, toIso)));
     // En prenumeration som aldrig gått att läsa räknas inte som kontrollerad.
     const kontrollerad = Boolean(user.feed_checked_at) && !user.feed_error;
-    return { busy, calendarChecked: kontrollerad };
+    return { busy, booked, calendarChecked: kontrollerad };
   }
 
   const auth = await accessTokenFor(user.id);
@@ -195,12 +199,12 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
     try {
       const fromGraph = await graph.busyIntervals(auth.token, { upn: auth.upn || user.email, fromIso, toIso });
       busy.push(...fromGraph);
-      return { busy, calendarChecked: true };
+      return { busy, booked, calendarChecked: true };
     } catch (err) {
       await audit('system', 'graph_freebusy_failed', { userId: user.id, error: String(err.message) });
     }
   }
-  return { busy, calendarChecked: false };
+  return { busy, booked, calendarChecked: false };
 }
 
 async function loadSchedule(user) {
@@ -262,9 +266,9 @@ async function slotsForHosts({ hosts, eventType, tz, fromDate, toDate, fromIso, 
 
   for (const host of hosts) {
     const { rules, overrides } = await loadSchedule(host);
-    const { busy, calendarChecked: last } = await busyFor(host, fromIso, toIso);
+    const { busy, booked, calendarChecked: last } = await busyFor(host, fromIso, toIso);
     if (!last) calendarChecked = false;
-    perVard.push(availableSlots({ timezone: tz, rules, overrides, eventType, busy, fromDate, toDate }));
+    perVard.push(availableSlots({ timezone: tz, rules, overrides, eventType, busy, booked, fromDate, toDate }));
   }
 
   return { days: intersectDays(perVard), calendarChecked };
@@ -470,8 +474,8 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
   for (const enHost of found.hosts) {
     if (enHost.feed_url) await feedSync.uppdateraOmGammal(enHost, 2);
     const { rules, overrides } = await loadSchedule(enHost);
-    const { busy } = await busyFor(enHost, fromIso, toIso);
-    const ok = isSlotAvailable({ timezone: tz, rules, overrides, eventType, busy }, start.toUTC().toISO());
+    const { busy, booked } = await busyFor(enHost, fromIso, toIso);
+    const ok = isSlotAvailable({ timezone: tz, rules, overrides, eventType, busy, booked }, start.toUTC().toISO());
     if (!ok) {
       return bad(
         res,

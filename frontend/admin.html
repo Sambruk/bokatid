@@ -62,7 +62,8 @@
       <h1 style="margin-bottom:0.25rem">Administration</h1>
       <p class="meta">
         Inloggad som <span id="anvandare"></span> ·
-        <a id="publikLank" href="#">Din publika bokningssida</a> ·
+        <a id="publikLank" href="#">Din personliga bokningssida</a> ·
+        <a id="gemensamLank" href="#">Gemensamma bokningssidan med gruppbokningar</a> ·
         <button type="button" class="knapp--enkel" id="loggaUt">Logga ut</button>
       </p>
 
@@ -182,14 +183,16 @@
           <textarea id="beskrivning"></textarea>
           <div class="rad">
             <span><label for="langd">Längd (min)</label><input id="langd" type="number" min="5" max="480" value="30" required></span>
-            <span><label for="steg">Tidsintervall (min)</label><input id="steg" type="number" min="5" max="240" value="30"></span>
+            <span><label for="steg">Ny starttid var (min)</label><input id="steg" type="number" min="5" max="240" value="30" aria-describedby="stegHjalp"></span>
             <span><label for="bufferefore">Buffert före (min)</label><input id="bufferefore" type="number" min="0" max="240" value="0"></span>
             <span><label for="bufferefter">Buffert efter (min)</label><input id="bufferefter" type="number" min="0" max="240" value="15"></span>
           </div>
+          <p class="hjalptext hjalptext--under" id="stegHjalp">Hur tätt starttiderna erbjuds. Med 15 kan man boka 09:00, 09:15, 09:30 …;
+             med 60 bara hela timmar. Mötets längd påverkas inte.</p>
           <div class="rad">
             <span><label for="framforhallning">Framförhållning (min)</label><input id="framforhallning" type="number" min="0" value="240"></span>
             <span><label for="dagarframat">Bokningsbart antal dagar framåt</label><input id="dagarframat" type="number" min="1" max="365" value="60"></span>
-            <span><label for="maxperdag">Max möten per dag <span class="hjalptext">(tomt = ingen gräns)</span></label><input id="maxperdag" type="number" min="1"></span>
+            <span><label for="maxperdag">Max bokningar per dag <span class="hjalptext">(via tjänsten; tomt = ingen gräns)</span></label><input id="maxperdag" type="number" min="1"></span>
           </div>
           <div class="rad">
             <span><label for="platstyp">Plats</label>
@@ -2271,7 +2274,8 @@
     document.getElementById('anvandare').textContent = `${jag.user.name} (${jag.user.email})`;
     const publik = document.getElementById('publikLank');
     publik.href = `${bas}/${jag.user.slug}`;
-    publik.textContent = 'Din publika bokningssida';
+    publik.textContent = 'Din personliga bokningssida';
+    document.getElementById('gemensamLank').href = `${bas}/`;
 
     const org = await visaOrganisation(bas);
     if (org?.kanskeText) SVARSTEXT.kanske = org.kanskeText;

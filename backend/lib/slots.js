@@ -16,6 +16,8 @@ const { DateTime, Interval } = require('luxon');
  * @param {object} p.eventType           {duration_min, buffer_before, buffer_after,
  *                                        slot_step_min, min_notice_min, max_days_ahead, max_per_day}
  * @param {Array}  p.busy                [{start: ISO|Date, end: ISO|Date}] — bokningar och upptaget i kalendern
+ * @param {Array}  [p.booked]            [{start, end}] — bara bokningar via tjänsten; det är dem
+ *                                       taket per dag räknar, inte värdens övriga möten
  * @param {string} p.fromDate            'YYYY-MM-DD' (lokalt datum, inklusive)
  * @param {string} p.toDate              'YYYY-MM-DD' (lokalt datum, inklusive)
  * @param {Date}   [p.now]
@@ -34,9 +36,10 @@ function availableSlots(p) {
   const earliest = now.plus({ minutes: et.min_notice_min || 0 });
   const latest = now.plus({ days: et.max_days_ahead || 60 }).endOf('day');
 
-  const busy = (p.busy || [])
-    .map((b) => Interval.fromDateTimes(toDT(b.start, tz), toDT(b.end, tz)))
-    .filter((iv) => iv.isValid);
+  const tillIntervall = (lista) =>
+    (lista || []).map((b) => Interval.fromDateTimes(toDT(b.start, tz), toDT(b.end, tz))).filter((iv) => iv.isValid);
+  const busy = tillIntervall(p.busy);
+  const booked = tillIntervall(p.booked);
 
   const overrideByDate = new Map();
   for (const o of p.overrides || []) overrideByDate.set(dateKey(o.on_date), o);
@@ -58,7 +61,7 @@ function availableSlots(p) {
     const windows = windowsForDate(day, overrideByDate.get(key), rulesByWeekday);
     const slots = [];
 
-    if (windows.length && withinDayLimit(day, busy, et.max_per_day)) {
+    if (windows.length && withinDayLimit(day, booked, et.max_per_day)) {
       for (const w of windows) {
         for (let m = w.start_min; m + duration <= w.end_min; m += step) {
           const start = atMinutes(day, m, tz);
@@ -103,11 +106,13 @@ function windowsForDate(day, override, rulesByWeekday) {
   }));
 }
 
-// Tak för antal möten per dag räknas på värdens lokala dygn.
-function withinDayLimit(day, busy, maxPerDay) {
+// Tak för antal bokningar per dag räknas på värdens lokala dygn. Bara bokningar
+// via tjänsten räknas: med värdens alla Outlook-möten inräknade stängdes varje
+// normal arbetsdag, och taket betydde något annat än det som står i formuläret.
+function withinDayLimit(day, booked, maxPerDay) {
   if (!maxPerDay) return true;
   const dayIv = Interval.fromDateTimes(day, day.plus({ days: 1 }));
-  const count = busy.filter((iv) => iv.overlaps(dayIv)).length;
+  const count = booked.filter((iv) => iv.overlaps(dayIv)).length;
   return count < maxPerDay;
 }
 

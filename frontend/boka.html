@@ -143,45 +143,81 @@
     return t.location_text || 'Plats meddelas';
   }
 
+  function ritaDagar(dagar) {
+    let antal = 0;
+    let forsta = null;
+    for (const dag of dagar) {
+      if (!dag.slots.length) continue;
+      antal += dag.slots.length;
+      if (!forsta) forsta = dag;
+      const ruta = document.createElement('div');
+      ruta.className = 'dag';
+      const rubrik = document.createElement('h3');
+      rubrik.className = 'dag__rubrik';
+      rubrik.textContent = dag.label;
+      const tider = document.createElement('div');
+      tider.className = 'tider';
+      for (const tid of dag.slots) {
+        const knapp = document.createElement('button');
+        knapp.type = 'button';
+        knapp.className = 'tid';
+        knapp.textContent = tid.label;
+        knapp.setAttribute('aria-pressed', 'false');
+        knapp.setAttribute('aria-label', `${tid.label} ${dag.label}`);
+        knapp.addEventListener('click', () => valjTid(tid, dag, knapp));
+        tider.append(knapp);
+      }
+      ruta.append(rubrik, tider);
+      dagarEl.append(ruta);
+    }
+    return { antal, forsta };
+  }
+
+  /**
+   * Hämtar två veckor i taget. Är fönstret tomt letar sidan själv vidare fram
+   * till första lediga dag i stället för att be besökaren klicka sig fram — en
+   * värd med fullbokade veckor såg annars ut att sakna tider helt.
+   */
   async function laddaTider(fran, till, tillagg = false) {
     flerKnapp.disabled = true;
     if (!tillagg) dagarEl.textContent = '';
     try {
-      const data = await hamta(
-        `${bas}/api/slots/${encodeURIComponent(vardSlug)}/${encodeURIComponent(eventSlug)}` +
-        `?from=${fran}&to=${till}`
-      );
-      maxDatum = data.maxDate;
       let antal = 0;
-      for (const dag of data.days) {
-        if (!dag.slots.length) continue;
-        antal += dag.slots.length;
-        const ruta = document.createElement('div');
-        ruta.className = 'dag';
-        const rubrik = document.createElement('h3');
-        rubrik.className = 'dag__rubrik';
-        rubrik.textContent = dag.label;
-        const tider = document.createElement('div');
-        tider.className = 'tider';
-        for (const tid of dag.slots) {
-          const knapp = document.createElement('button');
-          knapp.type = 'button';
-          knapp.className = 'tid';
-          knapp.textContent = tid.label;
-          knapp.setAttribute('aria-pressed', 'false');
-          knapp.setAttribute('aria-label', `${tid.label} ${dag.label}`);
-          knapp.addEventListener('click', () => valjTid(tid, dag, knapp));
-          tider.append(knapp);
-        }
-        ruta.append(rubrik, tider);
-        dagarEl.append(ruta);
+      let forsta = null;
+      let hoppade = false;
+      let f = fran;
+      let t = till;
+      for (;;) {
+        const data = await hamta(
+          `${bas}/api/slots/${encodeURIComponent(vardSlug)}/${encodeURIComponent(eventSlug)}` +
+          `?from=${f}&to=${t}`
+        );
+        maxDatum = data.maxDate;
+        fonsterSlut = t;
+        const r = ritaDagar(data.days);
+        antal += r.antal;
+        forsta = forsta || r.forsta;
+        if (antal || !maxDatum || t >= maxDatum) break;
+        hoppade = true;
+        f = datumPlus(t, 1);
+        t = datumPlus(t, 14);
       }
+
+      const slut = Boolean(maxDatum && fonsterSlut >= maxDatum);
       if (!dagarEl.children.length) {
-        notis(meddelande, 'Inga lediga tider i den här perioden. Prova att visa fler dagar.', 'info');
-      } else if (antal) {
+        notis(meddelande, `Inga lediga tider de närmaste ${typ.max_days_ahead} dagarna.`, 'info');
+      } else if (!antal) {
+        notis(meddelande, 'Inga fler lediga tider inom bokningsperioden.', 'info');
+      } else if (hoppade) {
+        notis(
+          meddelande,
+          tillagg ? `Nästa lediga tid är ${forsta.label}.` : `Första lediga tid är ${forsta.label}.`,
+          'info'
+        );
+      } else {
         rensaNotis(meddelande);
       }
-      flerKnapp.hidden = Boolean(maxDatum && till >= maxDatum);
+      flerKnapp.hidden = slut;
     } catch (err) {
       notis(meddelande, `Kunde inte hämta lediga tider: ${err.message}`, 'fel');
     } finally {
@@ -210,9 +246,7 @@
   });
 
   flerKnapp.addEventListener('click', () => {
-    const nyStart = datumPlus(fonsterSlut, 1);
-    fonsterSlut = datumPlus(fonsterSlut, 14);
-    laddaTider(nyStart, fonsterSlut, true);
+    laddaTider(datumPlus(fonsterSlut, 1), datumPlus(fonsterSlut, 14), true);
   });
 
   /**
