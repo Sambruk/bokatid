@@ -103,6 +103,36 @@ Alla variabler har prefixet `BOKA_` med avsikt: utan prefix kan namn som
 värdens värde över `.env` vid interpolation i docker compose. Det felet är tyst
 och kostar en timme att hitta.
 
+## Boka om en tjänst eller ett projekt
+
+Besökaren kan utgå från *vad* ärendet gäller i stället för *vem* hen ska träffa.
+Startsidan listar tjänster och projekt med sökfält och filter, och varje post har
+en egen sida, `/boka/om/<namn>`. Där visas de tider då **någon** av de ansvariga är
+ledig. Mötet läggs hos en av dem som är ledig vid den valda tiden, och den som haft
+minst sådana bokningar de senaste 30 dagarna får det (rundgång). Rubriken i
+kalendern och i mailen blir "Samtal om <namn>".
+
+Listan hämtas var tionde minut från en extern källa (i Sambruks fall CRM:et via en
+intern tjänst). Källan anges med `BOKA_VITLISTAN_URL` och `BOKA_VITLISTAN_TOKEN`.
+Den anropas med `GET <url>/api/samverkan/ansvariga` och headern `X-Vitlistan-Token`,
+och ska svara med:
+
+```json
+{ "samverkan": [ { "id": "…", "name": "Stimma", "type": "Tjänst",
+                   "shortText": "…", "ansvariga": ["namn@exempel.se"] } ] }
+```
+
+- De ansvarigas e-postadresser matchas mot användarnas. Adresserna lämnar aldrig
+  servern; de publika sidorna visar bara namn, titel och foto.
+- Bara ansvariga med konto blir bokningsbara. Superadmin ser under Organisation
+  vilka som saknar konto och kan lägga upp dem direkt.
+- Varje ansvarig får automatiskt mötestypen "Samtal om tjänst eller projekt"
+  (30 minuter, Teams). Den styr längd, frågor och framförhållning och kan ändras
+  eller avaktiveras, men inte tas bort.
+- Ett fel eller en tom lista från källan tömmer aldrig något; den senaste lyckade
+  listan gäller. En post som försvinner ur källan döljs men raderas inte.
+- Utan de två variablerna är funktionen avstängd och startsidan ser ut som förut.
+
 ## Organisation och roller
 
 Tre roller: **användare** (`host`), **superadmin** (`admin`) och **extern part**

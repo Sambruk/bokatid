@@ -111,6 +111,7 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     if (name.length < 2) return bad(res, 400, 'Ange namn');
     if (!isEmail(email)) return bad(res, 400, 'Ange en giltig e-postadress');
     if (!slug) return bad(res, 400, 'Ange ett kortnamn för bokningsadressen');
+    if (RESERVERADE_SLUGS.has(slug)) return bad(res, 400, `Kortnamnet "${slug}" är upptaget av en sida i tjänsten. Välj ett annat.`);
 
     const role = ['admin', 'extern'].includes(req.body?.role) ? req.body.role : 'host';
     // Ett lösenord är valfritt: den som loggar in med Microsoft behöver inget.
@@ -185,6 +186,9 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
 
     const slug = rensaSlug(str(req.body?.slug, 60) || fanns[0].slug);
     if (!slug) return bad(res, 400, 'Ange ett kortnamn');
+    if (RESERVERADE_SLUGS.has(slug) && slug !== fanns[0].slug) {
+      return bad(res, 400, `Kortnamnet "${slug}" är upptaget av en sida i tjänsten. Välj ett annat.`);
+    }
 
     // E-postadressen får ändras, men den styr både inloggning och vart
     // bokningsbesked går. Ändras den måste personen logga in med den nya
@@ -557,6 +561,12 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
   return { requireAdmin, publikOrganisation };
 };
 
+/*
+ * Kortnamn som är sidor i tjänsten. En användare med något av dem skulle
+ * aldrig nås: /boka/om/<x> är en ämnessida, inte värden "om".
+ */
+const RESERVERADE_SLUGS = new Set(['om', 'admin', 'avboka', 'omrostning', 'nytt-losenord', 'extern', 'api', 'media', 'mcp', 'css', 'js', 'auth', 'healthz']);
+
 function rensaSlug(v) {
   return String(v || '')
     .toLowerCase()
@@ -568,3 +578,4 @@ function rensaSlug(v) {
 }
 
 module.exports.publikOrganisation = publikOrganisation;
+module.exports.RESERVERADE_SLUGS = RESERVERADE_SLUGS;

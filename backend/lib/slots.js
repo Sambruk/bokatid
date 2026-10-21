@@ -172,6 +172,33 @@ function intersectDays(perVard) {
   }));
 }
 
+/**
+ * Unionen av flera värdars lediga tider, för bokning med "någon av" värdarna.
+ * Varje tid bär med sig vilka värdar som är lediga då (index i perVard), så
+ * att bokningen kan läggas hos en av dem. Dagarna sorteras och slås ihop per
+ * datum; en tid som finns hos flera värdar förekommer bara en gång.
+ *
+ * @param {Array<Array<{date: string, slots: Array<{start: string, end: string}>}>>} perVard
+ * @returns {Array<{date: string, slots: Array<{start: string, end: string, vardar: number[]}>}>}
+ */
+function unionDays(perVard) {
+  const dagar = new Map();
+  (perVard || []).forEach((vard, i) => {
+    for (const d of vard) {
+      if (!dagar.has(d.date)) dagar.set(d.date, new Map());
+      const tider = dagar.get(d.date);
+      for (const s of d.slots) {
+        if (!tider.has(s.start)) tider.set(s.start, { start: s.start, end: s.end, vardar: [] });
+        tider.get(s.start).vardar.push(i);
+      }
+    }
+  });
+  return [...dagar.keys()].sort().map((date) => ({
+    date,
+    slots: [...dagar.get(date).values()].sort((a, b) => a.start.localeCompare(b.start)),
+  }));
+}
+
 /** Svensk formatering för e-post och webbsidor: "torsdag 24 september 2026, 09:00–09:30". */
 function formatSwedish(startIso, endIso, tz = 'Europe/Stockholm') {
   const s = DateTime.fromISO(startIso, { zone: 'utc' }).setZone(tz).setLocale('sv');
@@ -179,4 +206,4 @@ function formatSwedish(startIso, endIso, tz = 'Europe/Stockholm') {
   return `${s.toFormat("cccc d LLLL yyyy',' HH:mm")}–${e.toFormat('HH:mm')}`;
 }
 
-module.exports = { availableSlots, isSlotAvailable, intersectDays, formatSwedish };
+module.exports = { availableSlots, isSlotAvailable, intersectDays, unionDays, formatSwedish };

@@ -459,6 +459,16 @@
             <button type="button" class="knapp--fara" id="taBortLogga" hidden>Ta bort logotypen</button>
           </p>
         </div>
+
+        <h3 id="crmRubrik">Koppling till CRM</h3>
+        <div class="kort" aria-labelledby="crmRubrik">
+          <p class="meta">Tjänster och projekt hämtas ur CRM:et var tionde minut, så att besökare kan
+             boka tid om ett ämne. De som är ansvariga där (tilldelad och projektledare) blir
+             bokningsbara när de har ett konto här.</p>
+          <p id="crmStatus" role="status" aria-live="polite"></p>
+          <div id="crmSaknas"></div>
+          <p class="rad rad--knappar"><button type="button" class="knapp--enkel" id="crmSynka">Hämta nu</button></p>
+        </div>
       </div>
     </section>
   </div>
@@ -693,6 +703,12 @@
       const rubrik = document.createElement('h3');
       rubrik.style.marginTop = '0';
       rubrik.textContent = t.title + (t.active ? '' : ' (inaktiv)');
+      if (t.system_typ) {
+        const etikett = document.createElement('span');
+        etikett.className = 'etikett';
+        etikett.textContent = 'Via tjänst/projekt';
+        rubrik.prepend(etikett);
+      }
       const meta = document.createElement('p');
       meta.className = 'meta';
       const vardar = Array.isArray(t.medvardar) && t.medvardar.length
@@ -701,10 +717,17 @@
       const agare = t.egen ? '' : `Ägare: ${t.agare_namn} · `;
       meta.textContent = `${agare}${t.duration_min} min · ${t.location_type} · buffert ${t.buffer_before}/${t.buffer_after} min · ${t.max_days_ahead} dagar framåt${vardar}`;
       const lank = document.createElement('p');
-      const a = document.createElement('a');
-      a.href = `${bas}/${t.agare_slug}/${t.slug}`;
-      a.textContent = `${location.origin}${bas}/${t.agare_slug}/${t.slug}`;
-      lank.append(a);
+      if (t.system_typ) {
+        // Har ingen egen länk: den bokas från sidorna för tjänster och projekt.
+        lank.className = 'meta';
+        lank.textContent = 'Används när någon bokar tid om en tjänst eller ett projekt där '
+          + (t.egen ? 'du' : t.agare_namn) + ' är ansvarig i CRM:et. Längd, frågor och schema styrs härifrån.';
+      } else {
+        const a = document.createElement('a');
+        a.href = `${bas}/${t.agare_slug}/${t.slug}`;
+        a.textContent = `${location.origin}${bas}/${t.agare_slug}/${t.slug}`;
+        lank.append(a);
+      }
       const knappar = document.createElement('p');
       knappar.className = 'rad rad--knappar';
       // Andras mötestyper kan superadmin bara ta bort, inte redigera.
@@ -719,6 +742,8 @@
       taBort.className = 'knapp--fara';
       taBort.textContent = 'Ta bort';
       taBort.setAttribute('aria-label', `Ta bort ${t.title}`);
+      // Skapas automatiskt för den som är ansvarig; kan avaktiveras men inte tas bort.
+      if (t.system_typ) taBort.hidden = true;
       taBort.addEventListener('click', async () => {
         const vems = t.egen ? '' : ` (ägs av ${t.agare_namn})`;
         if (!confirm(`Ta bort "${t.title}"${vems}?\n\nBokningslänken slutar fungera och gamla bokningar på mötestypen raderas. Det går inte att ångra.\n\nVill du bara stoppa nya bokningar: redigera och kryssa ur Aktiv i stället.`)) return;
@@ -2154,6 +2179,57 @@
 
   /* ---- organisation (superadmin) ---- */
 
+  /** CRM-kopplingen: status och ansvariga som saknar konto, med genväg till att lägga upp dem. */
+  async function laddaCrm() {
+    let c;
+    try {
+      c = await hamta(`${bas}/api/admin/crm`);
+    } catch {
+      return;
+    }
+    const status = document.getElementById('crmStatus');
+    const s = c.status || {};
+    const nar = s.senast ? new Date(s.senast).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : null;
+    if (!c.aktiverad) status.textContent = 'Avstängd: BOKA_VITLISTAN_URL och BOKA_VITLISTAN_TOKEN är inte satta.';
+    else if (s.ok === false) status.textContent = `Senaste hämtningen misslyckades${nar ? ` (${nar})` : ''}: ${s.fel}. Den förra listan gäller tills vidare.`;
+    else status.textContent = `${c.antal} tjänster och projekt, varav ${c.bokningsbara} bokningsbara.${nar ? ` Senast hämtat ${nar}.` : ''}`;
+
+    const ut = document.getElementById('crmSaknas');
+    ut.textContent = '';
+    if (!c.utanKonto.length) return;
+    const p = document.createElement('p');
+    p.textContent = 'Ansvariga i CRM:et som saknar konto här:';
+    const lista = document.createElement('ul');
+    for (const person of c.utanKonto) {
+      const li = document.createElement('li');
+      li.append(document.createTextNode(`${person.email} — ${person.amnen.join(', ')} `));
+      const knapp = document.createElement('button');
+      knapp.type = 'button';
+      knapp.className = 'knapp--enkel';
+      knapp.textContent = 'Lägg upp';
+      knapp.setAttribute('aria-label', `Lägg upp ${person.email} som användare`);
+      knapp.addEventListener('click', () => {
+        valjFlikId('flik-anvandare');
+        document.getElementById('aEpost').value = person.email;
+        document.getElementById('aNamn').focus();
+      });
+      li.append(knapp);
+      lista.append(li);
+    }
+    ut.append(p, lista);
+  }
+
+  document.getElementById('crmSynka').addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    try {
+      await skicka(`${bas}/api/admin/crm/synka`, {});
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+    ev.target.disabled = false;
+    await laddaCrm();
+  });
+
   async function laddaOrganisation() {
     let o;
     try {
@@ -2161,6 +2237,7 @@
     } catch (err) {
       return; // Inte superadmin.
     }
+    laddaCrm();
     document.getElementById('oOrgNamn').value = o.name || '';
     document.getElementById('oOrgWebb').value = o.website_url || '';
     document.getElementById('oOrgKanske').value = o.poll_maybe_label || '';

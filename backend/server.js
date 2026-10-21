@@ -15,6 +15,8 @@ const { gallra, startaGallring, inställningar: gallringInst } = require('./lib/
 const feedSync = require('./lib/feed-sync');
 const { kontrolleraAdress } = require('./lib/ics-feed');
 const agentNycklar = require('./lib/agent-nycklar');
+const crmSynk = require('./lib/crm-synk');
+const { RESERVERADE_SLUGS } = require('./lib/admin-routes');
 
 const PORT = Number(process.env.PORT || 3000);
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
@@ -253,7 +255,7 @@ async function findHostAndEvent(hostSlug, eventSlug) {
             u.title AS host_title, u.slug AS host_slug, u.timezone,
             u.feed_url, u.feed_checked_at, u.feed_error
      FROM event_types e JOIN users u ON u.id = e.user_id
-     WHERE u.slug = $1 AND e.slug = $2 AND e.active AND u.active`,
+     WHERE u.slug = $1 AND e.slug = $2 AND e.active AND u.active AND e.system_typ IS NULL`,
     [hostSlug, eventSlug]
   );
   if (!rows[0]) return null;
@@ -334,7 +336,7 @@ router.get('/api/hosts', async (req, res) => {
             COALESCE(json_agg(json_build_object('slug', e.slug, 'title', e.title,
               'duration_min', e.duration_min) ORDER BY e.title)
               FILTER (WHERE e.id IS NOT NULL), '[]') AS event_types
-     FROM users u LEFT JOIN event_types e ON e.user_id = u.id AND e.active
+     FROM users u LEFT JOIN event_types e ON e.user_id = u.id AND e.active AND e.system_typ IS NULL
      WHERE u.active GROUP BY u.id ORDER BY u.name`
   );
   res.json({ hosts: rows, today: DateTime.now().setZone(TZ).setLocale('sv').toFormat('cccc d LLLL yyyy') });
@@ -356,7 +358,7 @@ router.get('/api/oversikt', async (req, res) => {
                WHERE h.event_type_id = e.id AND hu.active AND hu.id <> u.id),
               '[]') AS medvardar
      FROM event_types e JOIN users u ON u.id = e.user_id
-     WHERE e.active AND u.active
+     WHERE e.active AND u.active AND e.system_typ IS NULL
      ORDER BY u.name, e.title`
   );
 
@@ -481,8 +483,17 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
 
   const found = await findHostAndEvent(req.params.hostSlug, req.params.eventSlug);
   if (!found) return bad(res, 404, 'Mötestypen finns inte');
-  const { host, eventType } = found;
+  return skapaBokning(req, res, found);
+});
 
+/**
+ * Själva bokningen, gemensam för bokning med en värd och bokning om ett ämne:
+ * kontroll att varje värd är ledig, bokningsraden, kalenderhändelsen och mailen.
+ * Vid ämnesbokning är eventType värdens system-mötestyp med rubriken satt till
+ * "Samtal om …", och amne är ämnets rad.
+ */
+async function skapaBokning(req, res, { host, eventType, hosts, amne = null }) {
+  const found = { hosts };
   const name = str(req.body?.name, 120);
   const email = str(req.body?.email, 254);
   const org = str(req.body?.org, 160);
@@ -528,9 +539,10 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
   try {
     const { rows } = await q(
       `INSERT INTO bookings (event_type_id, user_id, start_utc, end_utc, invitee_name,
-         invitee_email, invitee_org, answers, cancel_token, ics_uid)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [eventType.id, host.id, start.toUTC().toISO(), end.toUTC().toISO(), name, email, org || null, JSON.stringify(answers), cancelToken, icsUid]
+         invitee_email, invitee_org, answers, cancel_token, ics_uid, amne_id, rubrik)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [eventType.id, host.id, start.toUTC().toISO(), end.toUTC().toISO(), name, email, org || null, JSON.stringify(answers), cancelToken, icsUid,
+       amne ? amne.crm_id : null, amne ? eventType.title : null]
     );
     booking = rows[0];
   } catch (err) {
@@ -632,6 +644,7 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
     mailAccepted: mailResult.sent,
     mailErrors: mailResult.sent ? undefined : mailResult.errors || mailResult.reason,
     medvardsbesked: `${medvardsbesked} av ${medvardar.length}`,
+    amne: amne ? amne.slug : undefined,
     viaAgent: req.agent ? { nyckel: req.agent.tokenId, namn: req.agent.tokenName, anvandare: req.agent.user.email } : undefined,
   });
 
@@ -646,9 +659,10 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
       mailAccepted: mailResult.sent,
       // Sant när Outlooks inbjudan är bokarens besked och vi inte skickat eget mail.
       beskedViaOutlook: calendarWritten,
+      vard: { name: host.name, title: host.title },
     },
   });
-});
+}
 
 const cancelUrl = (token) => `${PUBLIC_URL}/avboka/${token}`;
 
@@ -656,7 +670,7 @@ const cancelUrl = (token) => `${PUBLIC_URL}/avboka/${token}`;
 
 router.get('/api/booking/:token', async (req, res) => {
   const { rows } = await q(
-    `SELECT b.*, e.title, e.description, e.location_type, e.location_text,
+    `SELECT b.*, COALESCE(b.rubrik, e.title) AS title, e.description, e.location_type, e.location_text,
             u.name AS host_name, u.email AS host_email, u.title AS host_title, u.timezone
      FROM bookings b JOIN event_types e ON e.id = b.event_type_id JOIN users u ON u.id = b.user_id
      WHERE b.cancel_token = $1`,
@@ -681,7 +695,7 @@ router.post('/api/booking/:token/cancel', async (req, res) => {
   const token = str(req.params.token, 80);
   const reason = str(req.body?.reason, 500);
   const { rows } = await q(
-    `SELECT b.*, e.title, e.description, e.location_type, e.location_text,
+    `SELECT b.*, COALESCE(b.rubrik, e.title) AS title, e.description, e.location_type, e.location_text,
             u.id AS host_id, u.name AS host_name, u.email AS host_email, u.title AS host_title, u.timezone
      FROM bookings b JOIN event_types e ON e.id = b.event_type_id JOIN users u ON u.id = b.user_id
      WHERE b.cancel_token = $1`,
@@ -759,6 +773,7 @@ async function uniqueSlug(email) {
       .slice(0, 40) || 'vard';
   for (let n = 1; n < 50; n++) {
     const kandidat = n === 1 ? bas : `${bas}-${n}`;
+    if (RESERVERADE_SLUGS.has(kandidat)) continue;
     const { rowCount } = await q('SELECT 1 FROM users WHERE slug = $1', [kandidat]);
     if (!rowCount) return kandidat;
   }
@@ -1189,13 +1204,17 @@ async function kommandeBokningar(kolumn, id) {
 
 router.delete('/api/admin/event-types/:id', requireAuth, async (req, res) => {
   const admin = req.user.role === 'admin';
-  const { rows } = await q('SELECT id, title, slug, user_id FROM event_types WHERE id = $1 AND ($2 OR user_id = $3)', [
+  const { rows } = await q('SELECT id, title, slug, user_id, system_typ FROM event_types WHERE id = $1 AND ($2 OR user_id = $3)', [
     int(req.params.id),
     admin,
     req.user.id,
   ]);
   const typ = rows[0];
   if (!typ) return bad(res, 404, 'Mötestypen finns inte');
+  // Den skulle ändå skapas igen vid nästa synk så länge personen är ansvarig i CRM:et.
+  if (typ.system_typ) {
+    return bad(res, 409, 'Den här mötestypen används för bokningar via tjänster och projekt och kan inte tas bort. Avaktivera den i stället.');
+  }
 
   const n = await kommandeBokningar('event_type', typ.id);
   if (n) {
@@ -1306,7 +1325,7 @@ router.get('/api/admin/bookings', requireAuth, async (req, res) => {
   const scope = req.query.scope === 'past' ? 'past' : 'upcoming';
   const { rows } = await q(
     `SELECT b.id, b.start_utc, b.end_utc, b.invitee_name, b.invitee_email, b.invitee_org,
-            b.answers, b.status, b.join_url, b.cancel_reason, b.cancelled_by, e.title
+            b.answers, b.status, b.join_url, b.cancel_reason, b.cancelled_by, COALESCE(b.rubrik, e.title) AS title
      FROM bookings b JOIN event_types e ON e.id = b.event_type_id
      WHERE b.user_id = $1 AND ${scope === 'past' ? 'b.start_utc < now()' : 'b.start_utc >= now()'}
      ORDER BY b.start_utc ${scope === 'past' ? 'DESC' : 'ASC'} LIMIT 200`,
@@ -1322,7 +1341,7 @@ router.get('/api/admin/bookings', requireAuth, async (req, res) => {
 
 router.post('/api/admin/bookings/:id/cancel', requireAuth, async (req, res) => {
   const { rows } = await q(
-    `SELECT b.*, e.title, e.description, e.location_type, e.location_text,
+    `SELECT b.*, COALESCE(b.rubrik, e.title) AS title, e.description, e.location_type, e.location_text,
             u.id AS host_id, u.name AS host_name, u.email AS host_email, u.title AS host_title
      FROM bookings b JOIN event_types e ON e.id = b.event_type_id JOIN users u ON u.id = b.user_id
      WHERE b.id = $1 AND b.user_id = $2`,
@@ -1494,6 +1513,55 @@ pollApi = require('./lib/poll-routes')({
   helpers: { bad, str, int, isEmail, rateLimit, accessTokenFor, busyFor, loadSchedule, PUBLIC_URL },
 });
 
+/* ---------- bokning om tjänst eller projekt (CRM) ---------- */
+
+require('./lib/amne-routes')({
+  router,
+  helpers: { bad, str, rateLimit, loadSchedule, busyFor, slotsForHosts, skapaBokning, TZ },
+});
+
+/**
+ * Kopplingen till CRM:et för superadmin: senaste synk och vilka ansvariga som
+ * saknar konto här — de syns inte som bokningsbara förrän de har ett.
+ */
+router.get('/api/admin/crm', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return bad(res, 403, 'Bara för superadmin');
+  const { rows: amnen } = await q('SELECT slug, namn, typ, ansvariga_epost FROM amnen WHERE aktiv ORDER BY namn');
+  const { rows: konton } = await q(
+    `SELECT lower(u.email) AS email, u.name, u.active, u.role,
+            EXISTS (SELECT 1 FROM event_types e WHERE e.user_id = u.id AND e.system_typ = $1 AND e.active) AS har_typ
+     FROM users u`,
+    [crmSynk.SYSTEM_TYP]
+  );
+  const kontoFor = new Map(konton.map((k) => [k.email, k]));
+  const saknas = new Map();
+  let bokningsbara = 0;
+  for (const a of amnen) {
+    let nagon = false;
+    for (const e of a.ansvariga_epost) {
+      const k = kontoFor.get(e);
+      if (k && k.active && k.role !== 'extern' && k.har_typ) nagon = true;
+      else if (!k) {
+        if (!saknas.has(e)) saknas.set(e, []);
+        saknas.get(e).push(a.namn);
+      }
+    }
+    if (nagon) bokningsbara++;
+  }
+  res.json({
+    aktiverad: crmSynk.aktiverad(),
+    status: crmSynk.status,
+    antal: amnen.length,
+    bokningsbara,
+    utanKonto: [...saknas.entries()].map(([email, amnenFor]) => ({ email, amnen: amnenFor })),
+  });
+});
+
+router.post('/api/admin/crm/synka', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return bad(res, 403, 'Bara för superadmin');
+  res.json(await crmSynk.synka());
+});
+
 /* ---------- sidor ---------- */
 
 // Agent-API (MCP). Före sidrutterna, annars fångar /:hostSlug upp GET /mcp.
@@ -1539,6 +1607,8 @@ router.get('/avboka/:token', page('avboka.html'));
 router.get('/omrostning/:token', page('omrostning.html'));
 router.get('/nytt-losenord/:token', page('nytt-losenord.html'));
 router.get('/extern/:token', page('extern.html'));
+// Före /:hostSlug/:eventSlug, annars blir "om" en värd. Kortnamnet "om" är reserverat.
+router.get('/om/:amneSlug', page('amne.html'));
 router.get('/:hostSlug', page('vard.html'));
 router.get('/:hostSlug/:eventSlug', page('boka.html'));
 
@@ -1572,6 +1642,7 @@ app.use((err, req, res, next) => {
   await seed();
   startaGallring();
   feedSync.startaFeedSync();
+  crmSynk.startaCrmSynk();
 
   // Städa bort utgångna sessioner och oauth-tillstånd en gång i timmen.
   setInterval(() => {

@@ -15,6 +15,9 @@
 - Enhetstester för tidslogiken, inklusive sommartidsskiftet, och för kontrastkravet
 - Agent-API (MCP) med personliga agentnycklar: lista tjänster, lediga tider, boka,
   egna bokningar och avbokning (prövat utan kalenderkoppling). Se docs/agent-api.md
+- Bokning om en tjänst eller ett projekt: lista med sök på startsidan, egen sida per
+  post, tider då någon av de ansvariga är ledig, rundgång mellan dem (prövat med
+  testvärdar utan kalenderkoppling)
 
 ## Återstår
 
@@ -30,7 +33,8 @@
 - Avisering till värden när alla svarat på en omröstning
 - Sista svarsdag som stänger omröstningen automatiskt
 - Fler språk än svenska
-- Rundgång mellan flera värdar, så bokningar fördelas
+- Rundgång även för vanliga mötestyper med flera värdar (finns i dag bara för
+  bokning om tjänst eller projekt)
 - Multi-tenant: flera organisationer i samma installation
 - OAuth 2.1 för MCP-klienter, så att användaren loggar in direkt i sin agent
 

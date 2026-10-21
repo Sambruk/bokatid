@@ -35,6 +35,12 @@
     <ul class="lista" id="typer"></ul>
 
     <p id="gruppLank" hidden></p>
+
+    <section id="ansvarSektion" hidden aria-labelledby="ansvarRubrik">
+      <h2 id="ansvarRubrik">Ansvarig för</h2>
+      <p class="meta">Boka tid om en tjänst eller ett projekt.</p>
+      <ul id="ansvar"></ul>
+    </section>
   </div>
 </main>
 
@@ -78,14 +84,27 @@
   }
 
   let data;
+  let amnen = [];
   try {
-    data = await hamta(`${bas}/api/oversikt`);
+    [data, amnen] = await Promise.all([
+      hamta(`${bas}/api/oversikt`),
+      // Ämnena är ett tillägg: går de inte att hämta visas sidan ändå.
+      hamta(`${bas}/api/amnen`).then((d) => d.amnen || [], () => []),
+    ]);
   } catch (err) {
     notis(meddelande, `Kunde inte hämta uppgifter: ${err.message}`, 'fel');
     return;
   }
 
-  const person = (data.personer || []).find((p) => p.slug === vardSlug);
+  // Tjänster och projekt där personen är ansvarig i CRM:et.
+  const egnaAmnen = amnen
+    .filter((a) => a.vardar.some((v) => v.slug === vardSlug))
+    .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+
+  // Den som bara bokas via ämnen har inga egna mötestyper och saknas i översikten.
+  const somAnsvarig = egnaAmnen[0]?.vardar.find((v) => v.slug === vardSlug);
+  const person = (data.personer || []).find((p) => p.slug === vardSlug) ||
+    (somAnsvarig && { ...somAnsvarig, eventTypes: [] });
   if (!person) {
     document.getElementById('rubrik').textContent = 'Personen finns inte';
     notis(meddelande, 'Den här personen har inga bokningsbara tider.', 'fel');
@@ -136,7 +155,22 @@
     p.hidden = false;
   }
 
-  if (!person.eventTypes.length && !grupp.length) {
+  if (egnaAmnen.length) {
+    const ut = document.getElementById('ansvar');
+    for (const a of egnaAmnen) {
+      const li = document.createElement('li');
+      const lank = document.createElement('a');
+      lank.href = `${bas}/om/${a.slug}`;
+      lank.textContent = a.namn;
+      li.append(lank, document.createTextNode(` (${a.typ.toLowerCase()})`));
+      ut.append(li);
+    }
+    document.getElementById('ansvarSektion').hidden = false;
+  }
+
+  if (egnaAmnen.length && !person.eventTypes.length && !grupp.length) {
+    // Inget att anmärka: tjänsterna och projekten nedan är vägen att boka.
+  } else if (!person.eventTypes.length && !grupp.length) {
     notis(meddelande, 'Den här personen har inga bokningsbara mötestyper just nu.', 'info');
   } else if (!person.eventTypes.length) {
     notis(meddelande, `${person.name} har inga egna mötestyper, men deltar i gruppbokningarna nedan.`, 'info');

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { availableSlots, isSlotAvailable, intersectDays } = require('../lib/slots');
+const { availableSlots, isSlotAvailable, intersectDays, unionDays } = require('../lib/slots');
 
 const RULES_VARDAG = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, start_min: 9 * 60, end_min: 12 * 60 }));
 
@@ -201,4 +201,26 @@ test('dagar som en värd saknar helt får inga tider kvar', () => {
 test('tom lista ger tom lista i stället för att krascha', () => {
   assert.deepEqual(intersectDays([]), []);
   assert.deepEqual(intersectDays(null), []);
+});
+
+test('unionen ger tider där minst en värd är ledig, med vilka som är lediga', () => {
+  const ut = unionDays([
+    [dag('2026-01-15', ['09:00', '10:00'])],
+    [dag('2026-01-15', ['10:00', '11:00'])],
+  ]);
+  assert.deepEqual(klockslagen(ut[0]), ['09:00', '10:00', '11:00']);
+  assert.deepEqual(ut[0].slots.map((s) => s.vardar), [[0], [0, 1], [1]]);
+});
+
+test('unionen tar med en dag som bara en värd har, och sorterar dagarna', () => {
+  const ut = unionDays([
+    [dag('2026-01-16', ['09:00'])],
+    [dag('2026-01-15', ['10:00']), dag('2026-01-16', [])],
+  ]);
+  assert.deepEqual(ut.map((d) => d.date), ['2026-01-15', '2026-01-16']);
+  assert.deepEqual(ut[1].slots.map((s) => s.vardar), [[0]]);
+});
+
+test('unionen av inga värdar är tom', () => {
+  assert.deepEqual(unionDays([]), []);
 });

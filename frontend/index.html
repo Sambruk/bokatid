@@ -28,6 +28,24 @@
 
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
 
+    <section id="amneSektion" hidden aria-labelledby="amneRubrik">
+      <h2 id="amneRubrik">Vad gäller ditt ärende?</h2>
+      <p class="meta">Välj en tjänst eller ett projekt, så bokar du tid med någon som ansvarar för det.</p>
+      <div class="amne-sok">
+        <div class="amne-sok__falt">
+          <label for="amneSok">Sök tjänst eller projekt</label>
+          <input type="search" id="amneSok" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="filter" role="group" aria-label="Visa">
+          <button type="button" data-typ="" aria-pressed="true">Alla</button>
+          <button type="button" data-typ="Tjänst" aria-pressed="false">Tjänster</button>
+          <button type="button" data-typ="Projekt" aria-pressed="false">Projekt</button>
+        </div>
+      </div>
+      <p class="meta" id="amneAntal" role="status" aria-live="polite"></p>
+      <ul class="lista" id="amnen"></ul>
+    </section>
+
     <section id="gruppSektion" hidden aria-labelledby="gruppRubrik">
       <h2 id="gruppRubrik">Gruppbokningar</h2>
       <p class="meta" id="gruppText"></p>
@@ -133,12 +151,94 @@
     return li;
   }
 
+  /*
+   * Tjänster och projekt ur CRM:et. Listan filtreras i webbläsaren: den är
+   * kort, och sökningen ska svara medan man skriver. Accenter räknas inte,
+   * så "lasaventyret" hittar Läsäventyret.
+   */
+  const normalisera = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  function amneKort(a) {
+    const li = document.createElement('li');
+    const lank = document.createElement('a');
+    lank.className = 'block';
+    lank.href = `${bas}/om/${a.slug}`;
+
+    const etikett = document.createElement('span');
+    etikett.className = 'etikett';
+    etikett.textContent = a.typ;
+    const namn = document.createElement('strong');
+    namn.textContent = a.namn;
+    lank.append(etikett, namn);
+
+    if (a.korttext) {
+      const text = document.createElement('span');
+      text.className = 'amne__text';
+      text.textContent = a.korttext;
+      lank.append(text);
+    }
+    const vilka = document.createElement('span');
+    vilka.className = 'meta amne__vilka';
+    const namnen = a.vardar.map((v) => v.name);
+    vilka.textContent = namnen.length > 1 ? `Med någon av ${namnen.join(', ')}` : `Med ${namnen[0]}`;
+    lank.append(vilka);
+
+    li.append(lank);
+    return li;
+  }
+
+  async function visaAmnen() {
+    let amnen;
+    try {
+      amnen = (await hamta(`${bas}/api/amnen`)).amnen || [];
+    } catch {
+      return 0; // Sidan fungerar ändå: man kan boka med en person.
+    }
+    if (!amnen.length) return 0;
+    amnen.sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+    for (const a of amnen) a._sok = normalisera(`${a.namn} ${a.korttext} ${a.vardar.map((v) => v.name).join(' ')}`);
+
+    const lista = document.getElementById('amnen');
+    const sok = document.getElementById('amneSok');
+    const antal = document.getElementById('amneAntal');
+    const knappar = [...document.querySelectorAll('.filter button')];
+    let typ = '';
+
+    // Filtren visas bara när det finns båda sorterna att välja mellan.
+    if (new Set(amnen.map((a) => a.typ)).size < 2) document.querySelector('.filter').hidden = true;
+
+    function rita() {
+      const ord = normalisera(sok.value).split(/\s+/).filter(Boolean);
+      const traffar = amnen.filter((a) => (!typ || a.typ === typ) && ord.every((o) => a._sok.includes(o)));
+      lista.textContent = '';
+      for (const a of traffar) lista.append(amneKort(a));
+      antal.textContent = traffar.length
+        ? `${traffar.length} ${traffar.length === 1 ? 'träff' : 'träffar'}`
+        : 'Inga träffar. Pröva ett annat ord, eller boka med en person nedan.';
+    }
+
+    sok.addEventListener('input', rita);
+    for (const k of knappar) {
+      k.addEventListener('click', () => {
+        typ = k.dataset.typ;
+        for (const b of knappar) b.setAttribute('aria-pressed', String(b === k));
+        rita();
+      });
+    }
+    rita();
+    document.getElementById('amneSektion').hidden = false;
+    return amnen.length;
+  }
+
+  const antalAmnen = await visaAmnen();
+  if (antalAmnen) document.getElementById('personRubrik').textContent = 'Eller boka med en person';
+
   try {
     const data = await hamta(`${bas}/api/oversikt`);
     const personer = data.personer || [];
     const grupp = data.grupp || [];
 
-    if (!personer.length && !grupp.length) {
+    if (!personer.length && !grupp.length && !antalAmnen) {
       notis(meddelande, 'Det finns inga bokningsbara tider upplagda ännu.', 'info');
       return;
     }

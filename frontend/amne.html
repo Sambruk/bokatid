@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boka tid</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml" id="ikon">
+<link rel="stylesheet" href="../css/style.css" id="stil">
+</head>
+<body>
+<a class="hoppa-till" href="#innehall">Hoppa till innehållet</a>
+<header class="topp">
+  <div class="omslag topp__rad">
+      <div class="topp__vanster">
+        <span class="topp__logglank" id="orgLank"></span>
+        <a class="topp__app" href="../admin" title="Logga in och administrera">Boka tid</a>
+      </div>
+      <p class="topp__org" id="orgNamn"></p>
+      <p class="idag" id="idag"></p>
+    </div>
+</header>
+
+<main id="innehall">
+  <div class="omslag">
+    <h1 id="rubrik">Hämtar…</h1>
+    <p class="meta" id="undertext"></p>
+    <p id="beskrivning"></p>
+    <h2 id="rubrik-vilka" class="endast-skarmlasare">Vem du träffar</h2>
+    <p class="meta" id="vilkaText" hidden></p>
+    <ul class="ansvariga" id="ansvariga" aria-labelledby="rubrik-vilka"></ul>
+
+    <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+
+    <section id="steg-tid" aria-labelledby="rubrik-tid">
+      <h2 id="rubrik-tid">Välj en tid</h2>
+      <p class="meta">Alla tider visas i svensk tid.</p>
+      <div class="dagar" id="dagar"></div>
+      <p class="rad rad--knappar" style="margin-top:1rem">
+        <button type="button" id="fler">Visa fler dagar</button>
+      </p>
+    </section>
+
+    <section id="steg-formular" class="kort" aria-labelledby="rubrik-formular" hidden>
+      <h2 id="rubrik-formular" style="margin-top:0">Dina uppgifter</h2>
+      <p><strong id="valdtid"></strong>
+         <button type="button" class="knapp--enkel" id="byt" style="margin-left:0.5rem">Byt tid</button></p>
+
+      <form id="formular" novalidate>
+        <label for="namn">Namn <span class="hjalptext">(obligatoriskt)</span></label>
+        <input id="namn" name="namn" autocomplete="name" required>
+
+        <label for="epost">E-postadress <span class="hjalptext">(obligatoriskt, hit skickas bekräftelsen)</span></label>
+        <input id="epost" name="epost" type="email" autocomplete="email" inputmode="email" required>
+
+        <label for="org">Organisation <span class="hjalptext">(frivilligt)</span></label>
+        <input id="org" name="org" autocomplete="organization">
+
+        <div id="fragor"></div>
+
+        <p class="meta" style="margin-top:1rem">
+          Uppgifterna används för att boka och genomföra mötet. De sparas hos Sambruk
+          och raderas när de inte längre behövs.
+        </p>
+
+        <p class="rad rad--knappar">
+          <button type="submit" id="boka">Bekräfta bokning</button>
+        </p>
+      </form>
+    </section>
+
+    <section id="steg-klart" class="kort" aria-labelledby="rubrik-klart" hidden>
+      <h2 id="rubrik-klart" tabindex="-1" style="margin-top:0">Tiden är bokad</h2>
+      <div id="klartinnehall"></div>
+    </section>
+  </div>
+</main>
+
+<footer><div class="omslag"><a href="../">Alla tjänster, projekt och personer</a> · Öppen källkod · <a href="https://github.com/Sambruk/bokatid">github.com/Sambruk/bokatid</a></div></footer>
+
+<script src="../js/gemensamt.js"></script>
+<script>
+(async () => {
+  // /boka/om/<ämne>: ämnet är sista delen av adressen.
+  const delar = location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  const amneSlug = delar[delar.length - 1];
+  const bas = basvag(2);
+  const api = `${bas}/api/amnen/${encodeURIComponent(amneSlug)}`;
+  document.getElementById('stil').href = `${bas}/css/style.css`;
+  visaIdag(document.getElementById('idag'));
+  await visaOrganisation(bas);
+
+  const meddelande = document.getElementById('notis');
+  const dagarEl = document.getElementById('dagar');
+  const flerKnapp = document.getElementById('fler');
+  const stegTid = document.getElementById('steg-tid');
+  const stegFormular = document.getElementById('steg-formular');
+  const stegKlart = document.getElementById('steg-klart');
+
+  let info = null;
+  let vald = null;
+  let fonsterStart = null; // första datum som visas
+  let maxDatum = null;
+
+  const datumPlus = (iso, dagar) => {
+    const d = new Date(`${iso}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + dagar);
+    return d.toISOString().slice(0, 10);
+  };
+
+  try {
+    info = await hamta(api);
+  } catch (err) {
+    document.getElementById('rubrik').textContent = 'Tjänsten eller projektet finns inte';
+    notis(meddelande, err.message, 'fel');
+    stegTid.hidden = true;
+    return;
+  }
+
+  const typ = info.eventType;
+  const amne = info.amne;
+  document.title = `Boka tid om ${amne.namn}`;
+  document.getElementById('rubrik').textContent = `Boka tid om ${amne.namn}`;
+  document.getElementById('undertext').textContent =
+    `${amne.typ} · ${typ.duration_min} minuter · ${platsText(typ)}`;
+  if (amne.korttext) document.getElementById('beskrivning').textContent = amne.korttext;
+  visaAnsvariga(info.vardar);
+
+  /** Initialer när personen inte lagt upp något foto. */
+  function initialer(namn) {
+    return namn.split(/\s+/).filter(Boolean).slice(0, 2).map((d) => d[0].toUpperCase()).join('');
+  }
+
+  /**
+   * Vem man kan få träffa. Med flera ansvariga avgörs det först vid bokningen
+   * — den som är ledig vid tiden får mötet — så det ska stå "någon av".
+   */
+  function visaAnsvariga(vardar) {
+    const text = document.getElementById('vilkaText');
+    text.textContent = vardar.length > 1
+      ? 'Du träffar någon av de ansvariga, den som är ledig vid tiden du väljer:'
+      : 'Du träffar:';
+    text.hidden = false;
+    const ut = document.getElementById('ansvariga');
+    for (const v of vardar) {
+      const li = document.createElement('li');
+      if (v.photoUrl) {
+        const bild = document.createElement('img');
+        bild.className = 'person__bild';
+        bild.src = `${bas}/${v.photoUrl}`;
+        bild.alt = '';
+        li.append(bild);
+      } else {
+        const ini = document.createElement('span');
+        ini.className = 'person__bild person__initialer';
+        ini.setAttribute('aria-hidden', 'true');
+        ini.textContent = initialer(v.name);
+        li.append(ini);
+      }
+      const namn = document.createElement('span');
+      const stark = document.createElement('strong');
+      stark.textContent = v.name;
+      namn.append(stark);
+      if (v.title) {
+        const titel = document.createElement('span');
+        titel.className = 'ansvariga__titel';
+        titel.textContent = v.title;
+        namn.append(titel);
+      }
+      li.append(namn);
+      ut.append(li);
+    }
+  }
+
+  for (const fraga of typ.questions || []) {
+    const id = 'f_' + Math.random().toString(36).slice(2, 9);
+    const label = document.createElement('label');
+    label.setAttribute('for', id);
+    label.textContent = fraga.key + ' ';
+    const hjalp = document.createElement('span');
+    hjalp.className = 'hjalptext';
+    hjalp.textContent = fraga.required ? '(obligatoriskt)' : '(frivilligt)';
+    label.append(hjalp);
+    const falt = document.createElement(fraga.type === 'textarea' ? 'textarea' : 'input');
+    falt.id = id;
+    falt.dataset.fraga = fraga.key;
+    if (fraga.required) falt.required = true;
+    document.getElementById('fragor').append(label, falt);
+  }
+
+  function platsText(t) {
+    if (t.location_type === 'teams') return 'Teams-möte';
+    if (t.location_type === 'phone') return 'Telefonmöte';
+    if (t.location_type === 'physical') return t.location_text ? `Plats: ${t.location_text}` : 'Fysiskt möte';
+    return t.location_text || 'Plats meddelas';
+  }
+
+  function ritaDagar(dagar) {
+    let antal = 0;
+    let forsta = null;
+    for (const dag of dagar) {
+      if (!dag.slots.length) continue;
+      antal += dag.slots.length;
+      if (!forsta) forsta = dag;
+      const ruta = document.createElement('div');
+      ruta.className = 'dag';
+      const rubrik = document.createElement('h3');
+      rubrik.className = 'dag__rubrik';
+      rubrik.textContent = dag.label;
+      const tider = document.createElement('div');
+      tider.className = 'tider';
+      for (const tid of dag.slots) {
+        const knapp = document.createElement('button');
+        knapp.type = 'button';
+        knapp.className = 'tid';
+        knapp.textContent = tid.label;
+        knapp.setAttribute('aria-pressed', 'false');
+        knapp.setAttribute('aria-label', `${tid.label} ${dag.label}`);
+        knapp.addEventListener('click', () => valjTid(tid, dag, knapp));
+        tider.append(knapp);
+      }
+      ruta.append(rubrik, tider);
+      dagarEl.append(ruta);
+    }
+    return { antal, forsta };
+  }
+
+  /**
+   * Hämtar två veckor i taget. Är fönstret tomt letar sidan själv vidare fram
+   * till första lediga dag i stället för att be besökaren klicka sig fram — en
+   * värd med fullbokade veckor såg annars ut att sakna tider helt.
+   */
+  async function laddaTider(fran, till, tillagg = false) {
+    flerKnapp.disabled = true;
+    if (!tillagg) dagarEl.textContent = '';
+    try {
+      let antal = 0;
+      let forsta = null;
+      let hoppade = false;
+      let f = fran;
+      let t = till;
+      for (;;) {
+        const data = await hamta(`${api}/slots?from=${f}&to=${t}`);
+        maxDatum = data.maxDate;
+        fonsterSlut = t;
+        const r = ritaDagar(data.days);
+        antal += r.antal;
+        forsta = forsta || r.forsta;
+        if (antal || !maxDatum || t >= maxDatum) break;
+        hoppade = true;
+        f = datumPlus(t, 1);
+        t = datumPlus(t, 14);
+      }
+
+      const slut = Boolean(maxDatum && fonsterSlut >= maxDatum);
+      if (!dagarEl.children.length) {
+        notis(meddelande, 'Ingen av de ansvariga har lediga tider inom bokningsperioden.', 'info');
+      } else if (!antal) {
+        notis(meddelande, 'Inga fler lediga tider inom bokningsperioden.', 'info');
+      } else if (hoppade) {
+        notis(
+          meddelande,
+          tillagg ? `Nästa lediga tid är ${forsta.label}.` : `Första lediga tid är ${forsta.label}.`,
+          'info'
+        );
+      } else {
+        rensaNotis(meddelande);
+      }
+      flerKnapp.hidden = slut;
+    } catch (err) {
+      notis(meddelande, `Kunde inte hämta lediga tider: ${err.message}`, 'fel');
+    } finally {
+      flerKnapp.disabled = false;
+    }
+  }
+
+  function valjTid(tid, dag, knapp) {
+    for (const b of dagarEl.querySelectorAll('.tid')) b.setAttribute('aria-pressed', 'false');
+    knapp.setAttribute('aria-pressed', 'true');
+    vald = tid;
+    document.getElementById('valdtid').textContent = `${dag.label}, ${tid.label}`;
+    stegFormular.hidden = false;
+    document.getElementById('namn').focus();
+  }
+
+  for (const id of ['namn', 'epost']) {
+    document.getElementById(id).addEventListener('input', (ev) => ev.target.removeAttribute('aria-invalid'));
+  }
+
+  document.getElementById('byt').addEventListener('click', () => {
+    stegFormular.hidden = true;
+    vald = null;
+    const forsta = dagarEl.querySelector('.tid');
+    if (forsta) forsta.focus();
+  });
+
+  flerKnapp.addEventListener('click', () => {
+    laddaTider(datumPlus(fonsterSlut, 1), datumPlus(fonsterSlut, 14), true);
+  });
+
+  /**
+   * Ett felmeddelande räcker inte: den som inte ser sidan behöver veta VILKET
+   * fält som är fel. Fältet markeras och fokus flyttas dit (WCAG 3.3.1).
+   */
+  function rensaFaltfel() {
+    for (const el of document.querySelectorAll('#formular [aria-invalid]')) {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    }
+    for (const el of document.querySelectorAll('#formular .faltfel')) el.remove();
+  }
+
+  function visaFaltfel(falt, text) {
+    rensaFaltfel();
+    if (!falt) {
+      notis(meddelande, text, 'fel');
+      return false;
+    }
+    // Felet skrivs under fältet: notisen överst på sidan syns inte när man
+    // står nere i formuläret.
+    rensaNotis(meddelande);
+    const fel = document.createElement('p');
+    fel.className = 'faltfel';
+    fel.id = `${falt.id}_fel`;
+    fel.textContent = text;
+    falt.after(fel);
+    falt.setAttribute('aria-invalid', 'true');
+    falt.setAttribute('aria-describedby', fel.id);
+    falt.focus();
+    return false;
+  }
+
+  // Markeringen släpps så fort man börjar rätta fältet.
+  document.getElementById('formular').addEventListener('input', (ev) => {
+    if (ev.target.getAttribute('aria-invalid') === 'true') rensaFaltfel();
+  });
+
+  /** Gissar vilket fält servern klagade på, så markeringen hamnar rätt. */
+  function faltForFel(text) {
+    const t = String(text).toLowerCase();
+    if (t.includes('e-post')) return document.getElementById('epost');
+    if (t.includes('namn')) return document.getElementById('namn');
+    return null;
+  }
+
+  document.getElementById('formular').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!vald) return notis(meddelande, 'Välj en tid först.', 'fel');
+
+    const namnFalt = document.getElementById('namn');
+    const epostFalt = document.getElementById('epost');
+    if (namnFalt.value.trim().length < 2) return visaFaltfel(namnFalt, 'Ange ditt namn.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(epostFalt.value.trim())) {
+      return visaFaltfel(epostFalt, 'Ange en giltig e-postadress, till exempel namn@kommun.se.');
+    }
+    for (const falt of document.querySelectorAll('[data-fraga]')) {
+      if (falt.required && !falt.value.trim()) {
+        return visaFaltfel(falt, `Fyll i: ${falt.dataset.fraga}`);
+      }
+    }
+    const knapp = document.getElementById('boka');
+    knapp.disabled = true;
+    rensaNotis(meddelande);
+
+    const answers = {};
+    for (const falt of document.querySelectorAll('[data-fraga]')) {
+      if (falt.value.trim()) answers[falt.dataset.fraga] = falt.value.trim();
+    }
+
+    try {
+      const svar = await skicka(
+        `${api}/book`,
+        {
+          start: vald.start,
+          name: document.getElementById('namn').value,
+          email: document.getElementById('epost').value,
+          org: document.getElementById('org').value,
+          answers,
+        }
+      );
+      visaKlart(svar.booking);
+    } catch (err) {
+      visaFaltfel(faltForFel(err.message), err.message);
+      knapp.disabled = false;
+      // Blev tiden upptagen under tiden: hämta om listan.
+      if (/bokad|ledig/i.test(err.message)) {
+        stegFormular.hidden = true;
+        vald = null;
+        laddaTider(fonsterStart, fonsterSlut);
+      }
+    }
+  });
+
+  function visaKlart(bokning) {
+    stegTid.hidden = true;
+    stegFormular.hidden = true;
+    stegKlart.hidden = false;
+    const ut = document.getElementById('klartinnehall');
+    ut.textContent = '';
+
+    const nar = document.createElement('p');
+    nar.append(document.createTextNode(bokning.when));
+    ut.append(nar);
+
+    if (bokning.vard) {
+      const vem = document.createElement('p');
+      vem.append(document.createTextNode('Du träffar '));
+      const namn = document.createElement('strong');
+      namn.textContent = bokning.vard.name;
+      vem.append(namn);
+      if (bokning.vard.title) vem.append(document.createTextNode(`, ${bokning.vard.title}`));
+      vem.append(document.createTextNode('.'));
+      ut.append(vem);
+    }
+
+    if (bokning.location) {
+      const plats = document.createElement('p');
+      plats.append(document.createTextNode(bokning.location));
+      ut.append(plats);
+    }
+    if (bokning.joinUrl) {
+      const p = document.createElement('p');
+      const a = document.createElement('a');
+      a.href = bokning.joinUrl;
+      a.textContent = 'Anslut till Teams-mötet';
+      p.append(a);
+      ut.append(p);
+    }
+    const post = document.createElement('p');
+    post.textContent = bokning.beskedViaOutlook
+      ? 'En kalenderinbjudan är på väg till din e-post. Svara gärna på den så syns det att du kommer.'
+      : bokning.mailAccepted
+        ? 'En bekräftelse med kalenderinbjudan är skickad till din e-post.'
+        : 'Bokningen är registrerad, men bekräftelsen via e-post kunde inte skickas. Kontakta oss om du vill ha den.';
+    ut.append(post);
+
+    const avboka = document.createElement('p');
+    avboka.append(document.createTextNode('Behöver du avboka: '));
+    const lank = document.createElement('a');
+    lank.href = bokning.cancelUrl;
+    lank.textContent = bokning.cancelUrl;
+    avboka.append(lank);
+    ut.append(avboka);
+
+    document.getElementById('rubrik-klart').focus();
+    document.getElementById('rubrik-klart').scrollIntoView({ block: 'start' });
+  }
+
+  // Starta med två veckor framåt från i dag.
+  const idag = new Date();
+  fonsterStart = new Date(idag.getTime() - idag.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  var fonsterSlut = datumPlus(fonsterStart, 13);
+  await laddaTider(fonsterStart, fonsterSlut);
+})();
+</script>
+</body>
+</html>

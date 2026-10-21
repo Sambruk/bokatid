@@ -51,6 +51,8 @@ services:
       MS_TENANT_ID: ${BOKA_MS_TENANT_ID}
       MS_CLIENT_ID: ${BOKA_MS_CLIENT_ID}
       MS_CLIENT_SECRET: ${BOKA_MS_CLIENT_SECRET}
+      VITLISTAN_URL: ${BOKA_VITLISTAN_URL}
+      VITLISTAN_TOKEN: ${BOKA_VITLISTAN_TOKEN}
     command: sh -c "npm install --omit=dev && node server.js"
     restart: always
     depends_on:

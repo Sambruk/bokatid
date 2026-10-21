@@ -342,3 +342,28 @@ CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens (user_id);
 -- ger den omröstning som redan finns i stället för en dubblett med nya utskick.
 ALTER TABLE polls ADD COLUMN IF NOT EXISTS client_ref TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS polls_client_ref ON polls (user_id, client_ref) WHERE client_ref IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Ämnen: tjänster och projekt ur CRM:et (via vitlistan), så att man kan boka
+-- tid om ett ämne i stället för med en namngiven person. Ansvarigas e-post
+-- matchas mot users.email; e-postadresserna lämnar aldrig servern.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS amnen (
+  crm_id          TEXT PRIMARY KEY,
+  slug            TEXT UNIQUE NOT NULL,
+  namn            TEXT NOT NULL,
+  typ             TEXT NOT NULL,
+  korttext        TEXT NOT NULL DEFAULT '',
+  ansvariga_epost TEXT[] NOT NULL DEFAULT '{}',
+  aktiv           BOOLEAN NOT NULL DEFAULT TRUE,
+  synkad_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Värdens egen mötestyp för ämnesbokningar ('amne'). Skapas automatiskt för den
+-- som är ansvarig i CRM:et och visas inte bland värdens vanliga mötestyper.
+ALTER TABLE event_types ADD COLUMN IF NOT EXISTS system_typ TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS event_types_system_typ ON event_types (user_id, system_typ) WHERE system_typ IS NOT NULL;
+
+-- Bokning gjord via ett ämne: ämnet ger rubriken ("Samtal om …") och rundgången.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS amne_id TEXT REFERENCES amnen(crm_id) ON DELETE SET NULL;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rubrik TEXT;
