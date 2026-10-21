@@ -173,12 +173,14 @@ a:hover { color: var(--gron-mork); }
   margin-right: 0.5rem;
   vertical-align: 0.1em;
 }
-.amne-sok { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; margin-bottom: 0.75rem; }
-.amne-sok__falt { flex: 1 1 16rem; }
+/* Startsidans två ingångar; den valda fäller ut listan under sig. */
+.amne-val { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.amne-val button { padding: 1rem 1.25rem; font-size: 1.05rem; text-align: left; background: var(--vit); color: var(--gron); border: 2px solid var(--gron); }
+.amne-val button:hover { background: #eef3ea; color: var(--gron-mork); border-color: var(--gron-mork); }
+.amne-val button[aria-expanded="true"] { background: var(--gron); color: var(--vit); border-color: var(--gron); }
+.amne-val button[hidden] { display: none; }
+.amne-sok__falt { max-width: 28rem; }
 .amne-sok__falt label { margin-top: 0; }
-.filter { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.filter button { background: var(--vit); color: var(--gron); border: 1px solid var(--linje); }
-.filter button[aria-pressed="true"] { background: var(--gron); color: var(--vit); border-color: var(--gron); }
 /* Korttexten i CRM:et kan vara en hel projektbeskrivning; i listan räcker två rader. */
 .lista .amne__text {
   display: -webkit-box;

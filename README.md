@@ -106,7 +106,8 @@ och kostar en timme att hitta.
 ## Boka om en tjänst eller ett projekt
 
 Besökaren kan utgå från *vad* ärendet gäller i stället för *vem* hen ska träffa.
-Startsidan listar tjänster och projekt med sökfält och filter, och varje post har
+Startsidan har två knappar, "Boka tid för visning av tjänst" och "Boka tid för
+information om projekt", som fäller ut en sökbar lista av den sorten. Varje post har
 en egen sida, `/boka/om/<namn>`. Där visas de tider då **någon** av de ansvariga är
 ledig. Mötet läggs hos en av dem som är ledig vid den valda tiden, och den som haft
 minst sådana bokningar de senaste 30 dagarna får det (rundgång). Rubriken i

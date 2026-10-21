@@ -30,20 +30,18 @@
 
     <section id="amneSektion" hidden aria-labelledby="amneRubrik">
       <h2 id="amneRubrik">Vad gäller ditt ärende?</h2>
-      <p class="meta">Välj en tjänst eller ett projekt, så bokar du tid med någon som ansvarar för det.</p>
-      <div class="amne-sok">
+      <div class="amne-val">
+        <button type="button" data-typ="Tjänst" aria-expanded="false" aria-controls="amnePanel">Boka tid för visning av tjänst</button>
+        <button type="button" data-typ="Projekt" aria-expanded="false" aria-controls="amnePanel">Boka tid för information om projekt</button>
+      </div>
+      <div id="amnePanel" hidden>
         <div class="amne-sok__falt">
-          <label for="amneSok">Sök tjänst eller projekt</label>
+          <label for="amneSok" id="amneSokEtikett">Sök</label>
           <input type="search" id="amneSok" autocomplete="off" spellcheck="false">
         </div>
-        <div class="filter" role="group" aria-label="Visa">
-          <button type="button" data-typ="" aria-pressed="true">Alla</button>
-          <button type="button" data-typ="Tjänst" aria-pressed="false">Tjänster</button>
-          <button type="button" data-typ="Projekt" aria-pressed="false">Projekt</button>
-        </div>
+        <p class="meta" id="amneAntal" role="status" aria-live="polite"></p>
+        <ul class="lista" id="amnen"></ul>
       </div>
-      <p class="meta" id="amneAntal" role="status" aria-live="polite"></p>
-      <ul class="lista" id="amnen"></ul>
     </section>
 
     <section id="gruppSektion" hidden aria-labelledby="gruppRubrik">
@@ -164,12 +162,10 @@
     lank.className = 'block';
     lank.href = `${bas}/om/${a.slug}`;
 
-    const etikett = document.createElement('span');
-    etikett.className = 'etikett';
-    etikett.textContent = a.typ;
+    // Ingen etikett Tjänst/Projekt: listan visar bara den sort man valt.
     const namn = document.createElement('strong');
     namn.textContent = a.namn;
-    lank.append(etikett, namn);
+    lank.append(namn);
 
     if (a.korttext) {
       const text = document.createElement('span');
@@ -201,15 +197,18 @@
     const lista = document.getElementById('amnen');
     const sok = document.getElementById('amneSok');
     const antal = document.getElementById('amneAntal');
-    const knappar = [...document.querySelectorAll('.filter button')];
+    const panel = document.getElementById('amnePanel');
+    const knappar = [...document.querySelectorAll('.amne-val button')];
+    const SOKETIKETT = { Tjänst: 'Sök bland tjänsterna', Projekt: 'Sök bland projekten' };
     let typ = '';
 
-    // Filtren visas bara när det finns båda sorterna att välja mellan.
-    if (new Set(amnen.map((a) => a.typ)).size < 2) document.querySelector('.filter').hidden = true;
+    // Listan ligger bakom knapparna så att startsidan inte fylls av alla
+    // tjänster och projekt. En knapp utan något att visa döljs.
+    for (const k of knappar) k.hidden = !amnen.some((a) => a.typ === k.dataset.typ);
 
     function rita() {
       const ord = normalisera(sok.value).split(/\s+/).filter(Boolean);
-      const traffar = amnen.filter((a) => (!typ || a.typ === typ) && ord.every((o) => a._sok.includes(o)));
+      const traffar = amnen.filter((a) => a.typ === typ && ord.every((o) => a._sok.includes(o)));
       lista.textContent = '';
       for (const a of traffar) lista.append(amneKort(a));
       antal.textContent = traffar.length
@@ -217,15 +216,19 @@
         : 'Inga träffar. Pröva ett annat ord, eller boka med en person nedan.';
     }
 
-    sok.addEventListener('input', rita);
     for (const k of knappar) {
       k.addEventListener('click', () => {
+        const oppna = k.getAttribute('aria-expanded') !== 'true';
+        for (const b of knappar) b.setAttribute('aria-expanded', String(oppna && b === k));
+        panel.hidden = !oppna;
+        if (!oppna) return;
         typ = k.dataset.typ;
-        for (const b of knappar) b.setAttribute('aria-pressed', String(b === k));
+        document.getElementById('amneSokEtikett').textContent = SOKETIKETT[typ] || 'Sök';
+        sok.value = '';
         rita();
       });
     }
-    rita();
+    sok.addEventListener('input', rita);
     document.getElementById('amneSektion').hidden = false;
     return amnen.length;
   }
