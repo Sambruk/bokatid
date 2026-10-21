@@ -25,3 +25,6 @@ media/*
 *.bak
 *.bak[0-9]*
 .DS_Store
+
+# Beställningsunderlag med namn, hör inte till det publika repot
+docs/Bokatid_utbyggnad_*.md

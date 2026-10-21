@@ -18,6 +18,32 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
 
   const pollUrl = (token) => `${PUBLIC_URL}/omrostning/${token}`;
 
+  /* ---------- agentnycklar ---------- */
+
+  // Märkningen i granskningsloggen när ändringen gjorts med en agentnyckel.
+  const viaAgent = (req) => (req.agent ? { nyckel: req.agent.tokenId, namn: req.agent.tokenName } : undefined);
+
+  // Takt för agenter, utöver den allmänna gränsen per nyckel. Omröstningar mejlar
+  // externa mottagare, så en agent som hamnat i en loop ska stanna tidigt.
+  const AGENT_OMROSTNINGAR = { max: 5, fonster: 10 * 60_000 };
+  const AGENT_INBJUDNINGAR = { max: 100, fonster: 10 * 60_000 };
+  const AGENT_PAMINNELSE_TIMMAR = 12;
+  const agentUtskick = new Map(); // nyckel-id → [{ t, n }]
+
+  /** Räknar av `antal` inbjudningar mot nyckelns kvot. False om kvoten inte räcker. */
+  function agentKvotInbjudningar(req, antal) {
+    if (!req.agent || !antal) return true;
+    const nu = Date.now();
+    const poster = (agentUtskick.get(req.agent.tokenId) || []).filter((p) => nu - p.t < AGENT_INBJUDNINGAR.fonster);
+    const anvant = poster.reduce((sum, p) => sum + p.n, 0);
+    if (anvant + antal > AGENT_INBJUDNINGAR.max) return false;
+    poster.push({ t: nu, n: antal });
+    agentUtskick.set(req.agent.tokenId, poster);
+    return true;
+  }
+  const kvotSlut = (res) =>
+    bad(res, 429, `En agentnyckel får skicka högst ${AGENT_INBJUDNINGAR.max} inbjudningar per 10 minuter. Vänta en stund.`);
+
   /** Pseudomötestyp för slotmotorn: en omröstning har ingen mötestyp i databasen. */
   const pollEventType = (p) => ({
     duration_min: p.duration_min,
@@ -87,6 +113,19 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
   /* ---------- admin: skapa ---------- */
 
   router.post('/api/admin/polls', requireAuth, async (req, res) => {
+    // Idempotens: samma klientreferens igen ger den omröstning som redan finns,
+    // så att ett omförsök efter ett nätverksfel inte mejlar alla en gång till.
+    const klientRef = str(req.body?.client_ref, 100) || null;
+    if (klientRef) {
+      const { rows: fanns } = await q('SELECT id, public_token FROM polls WHERE user_id = $1 AND client_ref = $2', [
+        req.user.id,
+        klientRef,
+      ]);
+      if (fanns[0]) {
+        return res.json({ poll: { id: fanns[0].id, url: pollUrl(fanns[0].public_token) }, redanSkapad: true });
+      }
+    }
+
     const title = str(req.body?.title, 160);
     if (title.length < 2) return bad(res, 400, 'Ange en rubrik');
     const duration = int(req.body?.duration_min);
@@ -154,11 +193,44 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       }
     }
 
+    // Förhandsgranskning: allt är kontrollerat, men inget sparas och inget mejlas.
+    if (req.body?.dry_run === true) {
+      return res.json({
+        forhandsgranskning: true,
+        sparat: false,
+        rubrik: title,
+        beskrivning: str(req.body?.description, 2000) || null,
+        langd_min: duration,
+        plats: locationType,
+        plats_text: str(req.body?.location_text, 300) || null,
+        sista_svarsdag: deadline,
+        reservera_kalender: req.body?.hold_calendar !== false,
+        kalender_kontrollerad: calendarChecked,
+        tider: tider.map((t) => ({
+          start: t.toUTC().toISO(),
+          nar: formatSwedish(t.toUTC().toISO(), t.plus({ minutes: duration }).toUTC().toISO(), tz),
+        })),
+        inbjudan: {
+          amne: `Vilka tider passar dig? ${title}`,
+          mottagare: deltagare.map((p) => ({ namn: p.name, epost: p.email, organisation: p.org || undefined })),
+        },
+      });
+    }
+
+    if (req.agent) {
+      if (!rateLimit(`poll:agent:${req.agent.tokenId}`, AGENT_OMROSTNINGAR.max, AGENT_OMROSTNINGAR.fonster)) {
+        return bad(res, 429, `En agentnyckel får skapa högst ${AGENT_OMROSTNINGAR.max} omröstningar per 10 minuter.`);
+      }
+      if (!agentKvotInbjudningar(req, deltagare.length)) return kvotSlut(res);
+    }
+
     const publicToken = randomToken(18);
-    const { rows: skapad } = await q(
+    let skapad;
+    try {
+      ({ rows: skapad } = await q(
       `INSERT INTO polls (user_id, public_token, title, description, duration_min,
-         location_type, location_text, deadline, hold_calendar, hide_names)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+         location_type, location_text, deadline, hold_calendar, hide_names, client_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         req.user.id,
         publicToken,
@@ -170,8 +242,20 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
         deadline,
         req.body?.hold_calendar !== false,
         req.body?.hide_names === true,
+        klientRef,
       ]
-    );
+    ));
+    } catch (err) {
+      // Två samtidiga anrop med samma klientreferens: det andra får den första.
+      if (err.code === '23505' && klientRef) {
+        const { rows: fanns } = await q('SELECT id, public_token FROM polls WHERE user_id = $1 AND client_ref = $2', [
+          req.user.id,
+          klientRef,
+        ]);
+        if (fanns[0]) return res.json({ poll: { id: fanns[0].id, url: pollUrl(fanns[0].public_token) }, redanSkapad: true });
+      }
+      throw err;
+    }
     const poll = skapad[0];
 
     for (const start of tider) {
@@ -200,6 +284,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       antalTider: tider.length,
       antalDeltagare: deltagare.length,
       kalenderLast: calendarChecked,
+      viaAgent: viaAgent(req),
     });
 
     // Reservationer i kalendern och inbjudningar tar en till några sekunder per
@@ -355,7 +440,8 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
   router.get('/api/admin/polls', requireAuth, async (req, res) => {
     // Superadmin ser alla omröstningar för att kunna ta bort dem; öppna och
     // hantera dem kan bara den som skapade dem.
-    const admin = req.user.role === 'admin';
+    // En agentnyckel får aldrig superadminens utökade rättigheter.
+    const admin = req.user.role === 'admin' && !req.agent;
     const { rows } = await q(
       `SELECT p.id, p.title, p.status, p.deadline, p.created_at, p.duration_min, p.public_token,
               u.name AS agare_namn, (p.user_id = $1) AS egen,
@@ -421,7 +507,9 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
         invited: Boolean(p.invited_at),
         responded: Boolean(p.responded_at),
         svar: svarPerDeltagare.get(p.id) || {},
-        url: `${pollUrl(poll.public_token)}?svar=${p.token}`,
+        // Den personliga länken låter vem som helst svara i deltagarens namn;
+        // den lämnas inte ut till en agent.
+        url: req.agent ? undefined : `${pollUrl(poll.public_token)}?svar=${p.token}`,
       })),
     });
   });
@@ -437,6 +525,10 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     const email = str(req.body?.email, 254).toLowerCase();
     if (!name) return bad(res, 400, 'Ange namn');
     if (!isEmail(email)) return bad(res, 400, 'Ange en giltig e-postadress');
+    if (poll.participants.length >= 50 && !poll.participants.some((p) => p.email.toLowerCase() === email)) {
+      return bad(res, 409, 'En omröstning kan ha högst 50 deltagare');
+    }
+    if (!agentKvotInbjudningar(req, 1)) return kvotSlut(res);
 
     const { rows } = await q(
       `INSERT INTO poll_participants (poll_id, name, email, org, token)
@@ -456,7 +548,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     });
     if (svar.sent) await q('UPDATE poll_participants SET invited_at = now() WHERE id = $1', [deltagare.id]);
 
-    await audit(req.user.email, 'poll_participant_added', { pollId: poll.id, skickat: svar.sent });
+    await audit(req.user.email, 'poll_participant_added', { pollId: poll.id, skickat: svar.sent, viaAgent: viaAgent(req) });
     res.status(201).json({ ok: true, mailAccepted: svar.sent });
   });
 
@@ -466,6 +558,19 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     if (poll.status !== 'open') return bad(res, 409, 'Omröstningen är inte öppen');
 
     const utan = poll.participants.filter((p) => !p.responded_at);
+    if (req.agent) {
+      // En agent påminner högst en gång per omröstning och halvdygn, oavsett
+      // om förra påminnelsen kom från en människa eller en agent.
+      const { rows: senast } = await q(
+        `SELECT at FROM audit_log WHERE action = 'poll_reminded' AND (detail->>'pollId')::int = $1
+           AND at > now() - make_interval(hours => $2) ORDER BY at DESC LIMIT 1`,
+        [poll.id, AGENT_PAMINNELSE_TIMMAR]
+      );
+      if (senast[0]) {
+        return bad(res, 429, `Deltagarna påmindes senast ${new Date(senast[0].at).toISOString()}. En agent får påminna högst en gång per ${AGENT_PAMINNELSE_TIMMAR} timmar.`);
+      }
+      if (!agentKvotInbjudningar(req, utan.length)) return kvotSlut(res);
+    }
     let skickade = 0;
     for (const p of utan) {
       const svar = await mail.sendPollInvitation({
@@ -477,7 +582,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       });
       if (svar.sent) skickade++;
     }
-    await audit(req.user.email, 'poll_reminded', { pollId: poll.id, skickade, utan: utan.length });
+    await audit(req.user.email, 'poll_reminded', { pollId: poll.id, skickade, utan: utan.length, viaAgent: viaAgent(req) });
     res.json({ ok: true, skickade, utanSvar: utan.length });
   });
 
@@ -614,6 +719,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       mailAccepted: mailResultat.sent && mailOvriga.sent,
       antalDeltagare: deltagare.length,
       antalUtanInbjudan: ovriga.length,
+      viaAgent: viaAgent(req),
     });
 
     res.json({
@@ -654,6 +760,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       pollId: poll.id,
       slapptaReservationer: slappta,
       mailAccepted: mailResultat.sent,
+      viaAgent: viaAgent(req),
     });
     res.json({ ok: true, releasedHolds: slappta, mailAccepted: mailResultat.sent });
   });

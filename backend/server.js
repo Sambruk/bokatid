@@ -14,6 +14,7 @@ const mail = require('./lib/mail');
 const { gallra, startaGallring, inställningar: gallringInst } = require('./lib/gallring');
 const feedSync = require('./lib/feed-sync');
 const { kontrolleraAdress } = require('./lib/ics-feed');
+const agentNycklar = require('./lib/agent-nycklar');
 
 const PORT = Number(process.env.PORT || 3000);
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
@@ -102,6 +103,18 @@ async function currentUser(req) {
 }
 
 async function requireAuth(req, res, next) {
+  // En agentnyckel släpps bara in på de vitlistade rutterna och bara med rätt
+  // behörighet. Ingen x-requested-with-kontroll: en Bearer-header skickas aldrig
+  // automatiskt av en webbläsare, så CSRF är inte möjligt den vägen.
+  if (req.agent) {
+    const krav = agentNycklar.behorighetForRutt(req.method, req.route?.path);
+    if (!krav) return bad(res, 403, 'En agentnyckel ger inte åtkomst hit. Logga in i adminvyn.');
+    if (!agentNycklar.tillater(req.agent.scopes, krav)) {
+      return bad(res, 403, `Nyckeln saknar behörigheten ${krav.map((k) => `"${k}"`).join(' eller ')}`);
+    }
+    req.user = req.agent.user;
+    return next();
+  }
   const user = await currentUser(req);
   if (!user) return bad(res, 401, 'Inte inloggad');
   // Skydd mot förfrågningar från andra webbplatser: admin-API:t kräver en
@@ -112,6 +125,25 @@ async function requireAuth(req, res, next) {
   req.user = user;
   next();
 }
+
+/*
+ * Agentnycklar: en Authorization-header med en bt_-nyckel identifierar agenten.
+ * En felaktig, spärrad eller utgången nyckel ger 401 direkt — anropet ska inte
+ * tyst behandlas som anonymt, då syns felet aldrig för den som satt upp agenten.
+ */
+router.use(async (req, res, next) => {
+  const nyckel = agentNycklar.lasBearer(req.get('authorization'));
+  if (!nyckel) return next();
+  try {
+    const agent = await agentNycklar.slaUpp(nyckel);
+    if (!agent) return bad(res, 401, 'Agentnyckeln är ogiltig, spärrad eller har gått ut');
+    if (!rateLimit(`agent:${agent.tokenId}`, 120, 60_000)) return bad(res, 429, 'För många anrop med nyckeln. Vänta en minut.');
+    req.agent = agent;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 /** Giltigt åtkomsttoken för Graph, förnyat vid behov. Null om värden inte kopplat M365. */
 async function accessTokenFor(userId) {
@@ -441,8 +473,11 @@ router.get('/api/slots/:hostSlug/:eventSlug', async (req, res) => {
 });
 
 router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
+  // Agenter räknas per nyckel: annars delar alla agenter bakom samma adress en kvot.
   const ip = req.ip || 'okänd';
-  if (!rateLimit(`book:${ip}`, 10, 10 * 60_000)) return bad(res, 429, 'För många bokningsförsök. Försök igen senare.');
+  const kvot = req.agent ? `book:agent:${req.agent.tokenId}` : `book:${ip}`;
+  if (!rateLimit(kvot, req.agent ? 20 : 10, 10 * 60_000)) return bad(res, 429, 'För många bokningsförsök. Försök igen senare.');
+  if (req.agent && !req.agent.scopes.includes('boka')) return bad(res, 403, 'Nyckeln saknar behörigheten "boka"');
 
   const found = await findHostAndEvent(req.params.hostSlug, req.params.eventSlug);
   if (!found) return bad(res, 404, 'Mötestypen finns inte');
@@ -597,6 +632,7 @@ router.post('/api/book/:hostSlug/:eventSlug', async (req, res) => {
     mailAccepted: mailResult.sent,
     mailErrors: mailResult.sent ? undefined : mailResult.errors || mailResult.reason,
     medvardsbesked: `${medvardsbesked} av ${medvardar.length}`,
+    viaAgent: req.agent ? { nyckel: req.agent.tokenId, namn: req.agent.tokenName, anvandare: req.agent.user.email } : undefined,
   });
 
   res.status(201).json({
@@ -1304,7 +1340,7 @@ router.get('/api/admin/gallring', requireAuth, async (req, res) => {
     "SELECT at, detail FROM audit_log WHERE action = 'gallring' ORDER BY id DESC LIMIT 1"
   );
   res.json({
-    installningar: gallringInst(),
+    installningar: await gallringInst(),
     senaste: rows[0] ? { at: rows[0].at, ...rows[0].detail } : null,
     // Torrkörning: visar vad som skulle tas bort just nu, utan att röra något.
     nu: await gallra({ torrkörning: true }),
@@ -1330,6 +1366,33 @@ router.put('/api/admin/password', requireAuth, async (req, res) => {
   await q('UPDATE users SET password_hash = $2 WHERE id = $1', [req.user.id, hashPassword(next)]);
   await q('DELETE FROM sessions WHERE user_id = $1', [req.user.id]);
   await audit(req.user.email, 'password_changed', {});
+  res.json({ ok: true });
+});
+
+/* ---------- agentnycklar (kräver inloggad session, aldrig en agent) ---------- */
+
+router.get('/api/admin/agentnycklar', requireAuth, async (req, res) => {
+  res.json({
+    nycklar: await agentNycklar.lista(req.user.id),
+    behorigheter: agentNycklar.BEHORIGHETER,
+    standardDagar: agentNycklar.STANDARD_DAGAR,
+    maxDagar: agentNycklar.MAX_DAGAR,
+    mcpUrl: `${PUBLIC_URL}/mcp`,
+  });
+});
+
+router.post('/api/admin/agentnycklar', requireAuth, async (req, res) => {
+  const tolkad = agentNycklar.tolkaNyNyckel(req.body);
+  if (tolkad.fel) return bad(res, 400, tolkad.fel);
+  const ny = await agentNycklar.skapa(req.user.id, tolkad);
+  await audit(req.user.email, 'agentnyckel_skapad', { id: ny.id, namn: ny.name, scopes: ny.scopes, prefix: ny.prefix });
+  res.status(201).json(ny);
+});
+
+router.delete('/api/admin/agentnycklar/:id', requireAuth, async (req, res) => {
+  const ok = await agentNycklar.sparra(req.user.id, int(req.params.id));
+  if (!ok) return bad(res, 404, 'Nyckeln finns inte eller är redan spärrad');
+  await audit(req.user.email, 'agentnyckel_sparrad', { id: int(req.params.id) });
   res.json({ ok: true });
 });
 
@@ -1432,6 +1495,9 @@ pollApi = require('./lib/poll-routes')({
 });
 
 /* ---------- sidor ---------- */
+
+// Agent-API (MCP). Före sidrutterna, annars fångar /:hostSlug upp GET /mcp.
+require('./lib/mcp')({ router, port: PORT });
 
 const page = (name) => (req, res) => res.sendFile(path.join(__dirname, 'public', name));
 

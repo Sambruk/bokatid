@@ -307,6 +307,39 @@
           <button type="button" class="knapp--enkel" id="gallraNu">Gallra nu</button>
         </p>
 
+        <h2>Agentnycklar</h2>
+        <p class="meta">En agentnyckel låter en AI-agent (t.ex. Claude eller Eneo) använda tjänsten
+           åt dig: se lediga tider, boka och hantera dina bokningar. Agenten kan aldrig mer än du,
+           och bara det du kryssar i. Nyckeln visas en enda gång — spärra den om den kommer bort.</p>
+        <div class="kort">
+          <p>Adress för agenten (MCP): <code id="mcpAdress"></code></p>
+          <p class="meta" style="margin-bottom:0">Nyckeln skickas i headern
+             <code>Authorization: Bearer bt_…</code>.</p>
+        </div>
+        <div id="nyckelVisas" class="notis notis--ok" hidden>
+          <p style="margin-top:0"><strong>Kopiera nyckeln nu. Den visas inte igen.</strong></p>
+          <p><code id="nyckelText" style="word-break:break-all"></code></p>
+          <p class="rad rad--knappar" style="margin-bottom:0">
+            <button type="button" class="knapp--enkel" id="kopieraNyckel">Kopiera</button>
+            <button type="button" class="knapp--enkel" id="doljNyckel">Jag har sparat den</button>
+          </p>
+        </div>
+        <form id="nyckelForm" class="kort">
+          <label for="nyckelNamn">Namn <span class="hjalptext">vilken agent nyckeln är till</span></label>
+          <input id="nyckelNamn" required maxlength="80" placeholder="t.ex. Claude på min dator">
+          <fieldset>
+            <legend>Agenten får</legend>
+            <div id="nyckelBehorigheter"></div>
+          </fieldset>
+          <label for="nyckelDagar">Giltig i antal dagar</label>
+          <input id="nyckelDagar" type="number" min="1" max="365" value="90" style="max-width:8rem">
+          <p class="rad rad--knappar"><button type="submit">Skapa nyckel</button></p>
+        </form>
+        <div class="tabellomslag"><table id="nyckelTabell">
+          <thead><tr><th>Namn</th><th>Början</th><th>Får</th><th>Giltig till</th><th>Senast använd</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+
         <h2>Byt lösenord</h2>
         <form id="losenordForm" style="max-width:28rem">
           <label for="nuvarande">Nuvarande lösenord</label>
@@ -407,6 +440,13 @@
           <label for="oOrgKanske">Svarsalternativet mellan ja och nej
             <span class="hjalptext">(i omröstningar, standard "Om jag måste")</span></label>
           <input id="oOrgKanske" maxlength="40" placeholder="Om jag måste">
+
+          <label for="oOrgGallring">Gallring av bokningar, dagar efter mötet</label>
+          <input id="oOrgGallring" type="number" min="0" max="3650" step="1" style="max-width:10rem"
+            aria-describedby="oOrgGallringHjalp">
+          <p class="hjalptext hjalptext--under" id="oOrgGallringHjalp">Bokningar med namn, e-post och svar
+             raderas så här många dagar efter att mötet ägt rum. Tomt = standard
+             (<span id="oOrgGallringStandard">90</span> dagar). 0 = bokningar gallras inte.</p>
           <p class="rad rad--knappar"><button type="submit">Spara</button></p>
         </form>
 
@@ -1056,6 +1096,114 @@
   }
 
   /* ---- lösenord ---- */
+  /* ---- agentnycklar ---- */
+
+  let behorigheter = {};
+
+  async function laddaNycklar() {
+    let d;
+    try {
+      d = await hamta(`${bas}/api/admin/agentnycklar`);
+    } catch (err) {
+      return notis(meddelande, err.message, 'fel');
+    }
+    behorigheter = d.behorigheter;
+    txt(document.getElementById('mcpAdress'), d.mcpUrl);
+
+    const ruta = document.getElementById('nyckelBehorigheter');
+    if (!ruta.childElementCount) {
+      for (const [kod, text] of Object.entries(d.behorigheter)) {
+        const p = document.createElement('p');
+        const label = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = kod;
+        box.checked = kod === 'las';
+        label.append(box, ' ' + text);
+        p.append(label);
+        ruta.append(p);
+      }
+    }
+
+    const tbody = document.querySelector('#nyckelTabell tbody');
+    tbody.replaceChildren();
+    if (!d.nycklar.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 7;
+      td.className = 'meta';
+      td.textContent = 'Inga nycklar ännu.';
+      tr.append(td);
+      tbody.append(tr);
+    }
+    const datum = (v) => (v ? new Date(v).toLocaleDateString('sv-SE') : '–');
+    for (const n of d.nycklar) {
+      const tr = document.createElement('tr');
+      const status = n.revoked_at ? 'Spärrad' : n.giltig ? 'Aktiv' : 'Utgången';
+      for (const v of [n.name, n.prefix + '…', n.scopes.join(', '), datum(n.expires_at),
+        n.last_used_at ? new Date(n.last_used_at).toLocaleString('sv-SE') : 'Aldrig', status]) {
+        const td = document.createElement('td');
+        td.textContent = v;
+        tr.append(td);
+      }
+      const td = document.createElement('td');
+      if (n.giltig) {
+        const knapp = document.createElement('button');
+        knapp.type = 'button';
+        knapp.className = 'knapp--fara';
+        knapp.textContent = 'Spärra';
+        knapp.setAttribute('aria-label', `Spärra nyckeln ${n.name}`);
+        knapp.addEventListener('click', async () => {
+          if (!confirm(`Spärra nyckeln "${n.name}"? Agenten som använder den slutar fungera direkt.`)) return;
+          try {
+            await skicka(`${bas}/api/admin/agentnycklar/${n.id}`, undefined, 'DELETE');
+            notis(meddelande, 'Nyckeln är spärrad.', 'ok');
+            await laddaNycklar();
+          } catch (err) {
+            notis(meddelande, err.message, 'fel');
+          }
+        });
+        td.append(knapp);
+      }
+      tr.append(td);
+      tbody.append(tr);
+    }
+  }
+
+  document.getElementById('nyckelForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const scopes = [...document.querySelectorAll('#nyckelBehorigheter input:checked')].map((b) => b.value);
+    try {
+      const ny = await skicka(`${bas}/api/admin/agentnycklar`, {
+        name: document.getElementById('nyckelNamn').value,
+        scopes,
+        dagar: Number(document.getElementById('nyckelDagar').value),
+      });
+      txt(document.getElementById('nyckelText'), ny.nyckel);
+      const ruta = document.getElementById('nyckelVisas');
+      ruta.hidden = false;
+      ruta.scrollIntoView({ block: 'center' });
+      document.getElementById('nyckelNamn').value = '';
+      await laddaNycklar();
+    } catch (err) {
+      notis(meddelande, err.message, 'fel');
+    }
+  });
+
+  document.getElementById('kopieraNyckel').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('nyckelText').textContent);
+      notis(meddelande, 'Nyckeln är kopierad.', 'ok');
+    } catch {
+      notis(meddelande, 'Kunde inte kopiera automatiskt — markera nyckeln och kopiera den.', 'fel');
+    }
+  });
+
+  document.getElementById('doljNyckel').addEventListener('click', () => {
+    txt(document.getElementById('nyckelText'), '');
+    document.getElementById('nyckelVisas').hidden = true;
+  });
+
   document.getElementById('losenordForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     try {
@@ -2016,6 +2164,9 @@
     document.getElementById('oOrgNamn').value = o.name || '';
     document.getElementById('oOrgWebb').value = o.website_url || '';
     document.getElementById('oOrgKanske').value = o.poll_maybe_label || '';
+    document.getElementById('oOrgGallring').value = o.gallring_bokningar_dagar ?? '';
+    document.getElementById('oOrgGallring').placeholder = String(o.gallring_bokningar_standard);
+    document.getElementById('oOrgGallringStandard').textContent = String(o.gallring_bokningar_standard);
     document.getElementById('oOrgRubrik').value = o.intro_rubrik || '';
     document.getElementById('oOrgIngress').value = o.intro_text || '';
     if (o.theme_color) {
@@ -2077,9 +2228,20 @@
         poll_maybe_label: document.getElementById('oOrgKanske').value,
         intro_rubrik: document.getElementById('oOrgRubrik').value,
         intro_text: document.getElementById('oOrgIngress').value,
+        gallring_bokningar_dagar: document.getElementById('oOrgGallring').value,
       }, 'PUT');
       visaKontrast(r.tema);
-      notis(meddelande, 'Organisationen är sparad. Ladda om en publik sida för att se den.', 'ok');
+      let text = 'Organisationen är sparad. Ladda om en publik sida för att se den.';
+      if (r.gallring) {
+        text += r.gallring.dagar
+          ? ` Bokningar gallras nu ${r.gallring.dagar} dagar efter mötet` +
+            (r.gallring.bokningarAttRadera
+              ? `; ${r.gallring.bokningarAttRadera} äldre bokningar raderas vid nästa körning (inom ett dygn).`
+              : '.')
+          : ' Bokningar gallras inte längre.';
+        visaGallring();
+      }
+      notis(meddelande, text, 'ok');
       await visaOrganisation(bas);
     } catch (err) {
       notis(meddelande, err.message, 'fel');
@@ -2288,7 +2450,7 @@
       document.getElementById('flik-organisation').hidden = false;
       await laddaOrganisation();
     }
-    await Promise.all([laddaBokningar(), laddaTyper(), laddaUndantag(), laddaOmrostningar(), visaGallring()]);
+    await Promise.all([laddaBokningar(), laddaTyper(), laddaUndantag(), laddaOmrostningar(), visaGallring(), laddaNycklar()]);
     visaM365();
     // Initiera de fält som förklarar sig själva, utan att flytta fokus.
     uppdateraPlatsfalt();

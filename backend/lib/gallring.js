@@ -17,8 +17,8 @@ function dagar(namn, standard) {
   return Math.min(Math.trunc(v), 3650);
 }
 
-/** 0 betyder avstängt för den kategorin, inte "radera allt". */
-function inställningar() {
+/** Standardvärden ur miljön. 0 betyder avstängt för den kategorin, inte "radera allt". */
+function standard() {
   return {
     bokningar: dagar('GALLRING_BOKNINGAR_DAGAR', 90),
     omrostningar: dagar('GALLRING_OMROSTNINGAR_DAGAR', 90),
@@ -26,8 +26,21 @@ function inställningar() {
   };
 }
 
+/**
+ * Gällande gallringstider. Bokningarnas tid kan superadmin sätta för
+ * organisationen; den läses vid varje körning, så en ändring gäller utan omstart.
+ */
+async function inställningar() {
+  const inst = standard();
+  const { rows } = await q('SELECT gallring_bokningar_dagar FROM organization WHERE id = 1');
+  const egen = rows[0]?.gallring_bokningar_dagar;
+  if (egen !== null && egen !== undefined) inst.bokningar = egen;
+  inst.bokningarFranOrganisation = egen !== null && egen !== undefined;
+  return inst;
+}
+
 async function gallra({ torrkörning = false } = {}) {
-  const inst = inställningar();
+  const inst = await inställningar();
   const resultat = { ...inst, bokningarBorttagna: 0, omrostningarBorttagna: 0, loggposterBorttagna: 0, torrkörning };
 
   // Bokningar räknas från mötets sluttid, inte från när den skapades.
@@ -91,10 +104,10 @@ async function gallra({ torrkörning = false } = {}) {
 
 /** Startar dygnsjobbet och kör en gallring direkt. */
 function startaGallring() {
-  const inst = inställningar();
+  const inst = standard();
   console.log(
     `Gallring: bokningar ${inst.bokningar || 'av'} dagar, omröstningar ${inst.omrostningar || 'av'} dagar, ` +
-      `logg ${inst.logg || 'av'} dagar`
+      `logg ${inst.logg || 'av'} dagar (bokningarnas tid kan ändras per organisation i adminvyn)`
   );
 
   const kör = () =>
@@ -115,4 +128,4 @@ function startaGallring() {
   return timer;
 }
 
-module.exports = { gallra, startaGallring, inställningar };
+module.exports = { gallra, startaGallring, inställningar, standard };

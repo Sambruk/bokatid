@@ -222,6 +222,8 @@ genomföra mötet.
   beslut eller avbrytning, granskningsloggen efter 365 dagar. Gränserna sätts med
   `BOKA_GALLRING_BOKNINGAR_DAGAR`, `BOKA_GALLRING_OMROSTNINGAR_DAGAR` och
   `BOKA_GALLRING_LOGG_DAGAR`; `0` stänger av gallringen för den kategorin.
+  Tiden för bokningar kan superadmin dessutom sätta för organisationen i
+  adminvyn (Organisation); den gäller före miljövariabeln och utan omstart.
   Adminvyn visar vad som skulle gallras just nu och låter jobbet köras direkt.
   Öppna omröstningar gallras aldrig automatiskt — de väntar på svar och håller
   tider reserverade i kalendern.

@@ -8,6 +8,7 @@ const { q, pool, audit } = require('./db');
 const { loadPoll } = require('./polls-sql');
 const { hashPassword, randomToken } = require('./crypto');
 const { tema } = require('./farg');
+const gallring = require('./gallring');
 const feedSync = require('./feed-sync');
 const { kontrolleraAdress } = require('./ics-feed');
 
@@ -388,6 +389,9 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
       poll_maybe_label: o.poll_maybe_label || '',
       intro_rubrik: o.intro_rubrik || '',
       intro_text: o.intro_text || '',
+      // Tomt = standardvärdet ur miljön, som visas bredvid fältet.
+      gallring_bokningar_dagar: o.gallring_bokningar_dagar ?? null,
+      gallring_bokningar_standard: gallring.standard().bokningar,
       logoUrl: o.logo_file ? `media/${o.logo_file}` : null,
       tema: o.theme_color ? tema(o.theme_color) : null,
       updated_at: o.updated_at,
@@ -403,6 +407,16 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
     const introRubrik = str(req.body?.intro_rubrik, 120);
     const introText = str(req.body?.intro_text, 600);
 
+    // Gallringstid för bokningar: tomt = standard, 0 = gallras inte.
+    const gallringRa = req.body?.gallring_bokningar_dagar;
+    let gallringDagar = null;
+    if (gallringRa !== null && gallringRa !== undefined && String(gallringRa).trim() !== '') {
+      gallringDagar = Number(gallringRa);
+      if (!Number.isInteger(gallringDagar) || gallringDagar < 0 || gallringDagar > 3650) {
+        return bad(res, 400, 'Gallringstiden ska vara ett helt antal dagar, 0–3650 (0 = gallras inte)');
+      }
+    }
+
     if (webb && !/^https?:\/\/[^\s]+\.[^\s]+$/i.test(webb)) {
       return bad(res, 400, 'Webbadressen måste börja med http:// eller https://');
     }
@@ -412,13 +426,24 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
       if (!temat) return bad(res, 400, 'Färgen måste anges som hexkod, till exempel #58A618');
     }
 
+    const { rows: fore } = await q('SELECT gallring_bokningar_dagar FROM organization WHERE id = 1');
     await q(
       `UPDATE organization SET name = $1, website_url = $2, theme_color = $3,
-         poll_maybe_label = $5, intro_rubrik = $6, intro_text = $7,
+         poll_maybe_label = $5, intro_rubrik = $6, intro_text = $7, gallring_bokningar_dagar = $8,
          updated_at = now(), updated_by = $4 WHERE id = 1`,
       [namn || null, webb || null, farg || null, req.user.email, kanske || null,
-       introRubrik || null, introText || null]
+       introRubrik || null, introText || null, gallringDagar]
     );
+    const gallringAndrad = (fore[0]?.gallring_bokningar_dagar ?? null) !== gallringDagar;
+    if (gallringAndrad) {
+      await audit(req.user.email, 'gallringstid_andrad', {
+        bokningar: { fran: fore[0]?.gallring_bokningar_dagar ?? null, till: gallringDagar },
+        standard: gallring.standard().bokningar,
+      });
+    }
+    // Vad nästa körning skulle radera med den nya tiden, så att en sänkning
+    // inte tar bort mer än man räknat med utan att det syns.
+    const nu = gallringAndrad ? await gallring.gallra({ torrkörning: true }) : null;
     await audit(req.user.email, 'organization_updated', {
       namn,
       webb,
@@ -426,7 +451,11 @@ module.exports = function adminRoutes({ router, requireAuth, helpers }) {
       kanskeText: kanske || null,
       justeradFarg: temat?.justerad,
     });
-    res.json({ ok: true, tema: temat });
+    res.json({
+      ok: true,
+      tema: temat,
+      gallring: nu ? { dagar: nu.bokningar, bokningarAttRadera: nu.bokningarBorttagna } : undefined,
+    });
   });
 
   /**

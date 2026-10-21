@@ -13,6 +13,8 @@
 - Superadmin: användare, organisationens namn, logotyp, webbadress och färgtema
 - Automatisk gallring av bokningar, avslutade omröstningar och granskningslogg
 - Enhetstester för tidslogiken, inklusive sommartidsskiftet, och för kontrastkravet
+- Agent-API (MCP) med personliga agentnycklar: lista tjänster, lediga tider, boka,
+  egna bokningar och avbokning (prövat utan kalenderkoppling). Se docs/agent-api.md
 
 ## Återstår
 
@@ -30,6 +32,7 @@
 - Fler språk än svenska
 - Rundgång mellan flera värdar, så bokningar fördelas
 - Multi-tenant: flera organisationer i samma installation
+- OAuth 2.1 för MCP-klienter, så att användaren loggar in direkt i sin agent
 
 ## Bidra
 

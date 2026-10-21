@@ -279,6 +279,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_file TEXT;
 ALTER TABLE organization ADD COLUMN IF NOT EXISTS intro_rubrik TEXT;
 ALTER TABLE organization ADD COLUMN IF NOT EXISTS intro_text TEXT;
 
+-- Gallringstid för bokningar, satt av superadmin. NULL = standardvärdet ur
+-- miljön (BOKA_GALLRING_BOKNINGAR_DAGAR), 0 = bokningar gallras inte.
+ALTER TABLE organization ADD COLUMN IF NOT EXISTS gallring_bokningar_dagar INTEGER
+  CHECK (gallring_bokningar_dagar BETWEEN 0 AND 3650);
+
 -- ---------------------------------------------------------------------------
 -- Externa användare: leverantörer och samverkansparter utanför organisationen.
 -- De delar sina upptagna tider genom en ICS-länk som tjänsten prenumererar på.
@@ -311,3 +316,29 @@ CREATE INDEX IF NOT EXISTS feed_busy_user_span ON feed_busy (user_id, start_utc,
 -- inloggning. Samma mönster som avbokningslänken.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_token TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS users_feed_token ON users (feed_token) WHERE feed_token IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Agentnycklar: personliga nycklar för AI-agenter som ansluter till /mcp.
+-- Nyckeln själv sparas aldrig, bara dess SHA-256. Prefixet (de första tecknen)
+-- visas i adminvyn så att man kan känna igen en nyckel utan att se den.
+-- En nyckel ger aldrig mer än användaren själv har, och bara det som står i scopes.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  token_hash   TEXT UNIQUE NOT NULL,
+  prefix       TEXT NOT NULL,
+  scopes       TEXT[] NOT NULL,
+  expires_at   TIMESTAMPTZ NOT NULL,
+  revoked_at   TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens (user_id);
+
+-- Klientreferens för omröstningar: ett omförsök från en agent med samma referens
+-- ger den omröstning som redan finns i stället för en dubblett med nya utskick.
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS client_ref TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS polls_client_ref ON polls (user_id, client_ref) WHERE client_ref IS NOT NULL;
