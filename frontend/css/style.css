@@ -371,3 +371,9 @@ footer { border-top: 1px solid var(--linje); padding: 1.25rem 0; color: var(--te
   .omslag { padding: 0 0.75rem; }
   .tider { grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr)); }
 }
+
+/* Adminvyn: hopfällda beslutade och avbrutna omröstningar */
+details.avslutade { margin-top: 1.25rem; }
+details.avslutade > summary { cursor: pointer; font-weight: 600; color: var(--gron); padding: 0.35rem 0; }
+details.avslutade > summary:hover { color: var(--gron-mork); text-decoration: underline; }
+details.avslutade[open] > summary { margin-bottom: 0.5rem; }

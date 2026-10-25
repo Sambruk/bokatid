@@ -1497,6 +1497,29 @@
     }
     // Superadmin ser alla omröstningar; kolumnen behövs bara när några är andras.
     const visaAgare = polls.some((p) => !p.egen);
+    // Beslutade och avbrutna ligger i en hopfälld sektion; de kräver inget mer.
+    const avslutad = (p) => p.status === 'decided' || p.status === 'cancelled';
+    const aktuella = polls.filter((p) => !avslutad(p));
+    const avslutade = polls.filter(avslutad);
+
+    if (aktuella.length) ut.append(omrostningsTabell(aktuella, visaAgare));
+    else {
+      const p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = 'Inga pågående omröstningar.';
+      ut.append(p);
+    }
+    if (avslutade.length) {
+      const sektion = document.createElement('details');
+      sektion.className = 'avslutade';
+      const rubrik = document.createElement('summary');
+      rubrik.textContent = `Beslutade och avbrutna omröstningar (${avslutade.length})`;
+      sektion.append(rubrik, omrostningsTabell(avslutade, visaAgare));
+      ut.append(sektion);
+    }
+  }
+
+  function omrostningsTabell(polls, visaAgare) {
     const omslag = document.createElement('div');
     omslag.className = 'tabellomslag';
     const tabell = document.createElement('table');
@@ -1554,7 +1577,7 @@
     }
     tabell.append(tbody);
     omslag.append(tabell);
-    ut.append(omslag);
+    return omslag;
   }
 
   document.getElementById('oRensa').addEventListener('click', async () => {
