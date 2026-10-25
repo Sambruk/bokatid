@@ -263,6 +263,15 @@
           <thead><tr><th>Datum</th><th>Gäller</th><th>Anteckning</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
+
+        <h3 id="rodaRubrik">Röda dagar</h3>
+        <p class="meta">Allmänna helgdagar enligt lagen (1989:253) om allmänna helgdagar, plus midsommar-, jul-
+          och nyårsafton som arbetstidslagen likställer med söndag. De är stängda automatiskt. Vill du ta emot
+          bokningar en röd dag lägger du ett undantag med andra tider för det datumet.</p>
+        <div class="tabellomslag"><table id="rodaTabell" aria-labelledby="rodaRubrik">
+          <thead><tr><th>Datum</th><th>Dag</th><th>Gäller</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
       </div>
 
       <div id="del-m365" role="tabpanel" aria-labelledby="flik-m365" tabindex="0" hidden>
@@ -1000,9 +1009,29 @@
   });
 
   /* ---- undantag ---- */
+  function visaRodaDagar(helgdagar, overrides) {
+    const egna = new Map(overrides.map((o) => [o.on_date, o]));
+    const tbody = document.querySelector('#rodaTabell tbody');
+    tbody.textContent = '';
+    for (const h of helgdagar || []) {
+      const tr = tbody.insertRow();
+      tr.insertCell().textContent = new Date(`${h.datum}T12:00:00`).toLocaleDateString('sv-SE', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+      });
+      tr.insertCell().textContent = h.namn;
+      const eget = egna.get(h.datum);
+      tr.insertCell().textContent = !eget
+        ? 'Stängt'
+        : eget.unavailable
+          ? 'Stängt (ditt undantag)'
+          : `Öppet ${minuterTillKlocka(eget.start_min)}–${minuterTillKlocka(eget.end_min)} (ditt undantag)`;
+    }
+  }
+
   async function laddaUndantag() {
-    const { rules, overrides } = await hamta(`${bas}/api/admin/availability`);
+    const { rules, overrides, helgdagar } = await hamta(`${bas}/api/admin/availability`);
     byggSchema(rules);
+    visaRodaDagar(helgdagar, overrides);
     const tbody = document.querySelector('#undantagTabell tbody');
     tbody.textContent = '';
     if (!overrides.length) {
@@ -1446,6 +1475,15 @@
     }
   });
 
+  // Sista svarsdagen sparas som dagens slut i värdens tidszon; visa datumet där.
+  function sistaSvarsdag(p) {
+    if (!p.deadline) return 'Ingen';
+    const text = new Date(p.deadline).toLocaleDateString('sv-SE', {
+      day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Stockholm',
+    });
+    return p.status === 'open' && new Date(p.deadline) < new Date() ? `${text} (passerad)` : text;
+  }
+
   async function laddaOmrostningar() {
     const { polls } = await hamta(`${bas}/api/admin/polls`);
     const ut = document.getElementById('omrostningarLista');
@@ -1463,13 +1501,14 @@
     omslag.className = 'tabellomslag';
     const tabell = document.createElement('table');
     tabell.innerHTML =
-      `<thead><tr><th>Rubrik</th>${visaAgare ? '<th>Ägare</th>' : ''}<th>Status</th><th>Tider</th><th>Svar</th><th></th></tr></thead>`;
+      `<thead><tr><th>Rubrik</th>${visaAgare ? '<th>Ägare</th>' : ''}<th>Status</th><th>Sista svarsdag</th><th>Tider</th><th>Svar</th><th></th></tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const p of polls) {
       const tr = tbody.insertRow();
       tr.insertCell().textContent = p.title;
       if (visaAgare) tr.insertCell().textContent = p.egen ? 'Du' : p.agare_namn;
       tr.insertCell().textContent = STATUSTEXT[p.status] || p.status;
+      tr.insertCell().textContent = sistaSvarsdag(p);
       tr.insertCell().textContent = p.antal_tider;
       tr.insertCell().textContent = `${p.antal_svar} av ${p.antal_deltagare}`;
       const knapp = document.createElement('button');

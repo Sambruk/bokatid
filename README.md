@@ -16,7 +16,11 @@ en kommun kan läsa igenom koden, driftsätta den själv och lita på den.
 ## Vad den gör
 
 - Mötestyper med egen längd, buffertar, framförhållning och bokningsfönster
-- Veckoschema per värd, plus undantag för enskilda datum (semester, röda dagar)
+- Veckoschema per värd, plus undantag för enskilda datum (semester m.m.)
+- **Svenska röda dagar är stängda automatiskt:** de allmänna helgdagarna räknas fram
+  enligt lagen (1989:253) om allmänna helgdagar, och midsommar-, jul- och nyårsafton
+  räknas med eftersom arbetstidslagen likställer dem med söndag. En värd som vill ta
+  emot bokningar en röd dag lägger ett undantag med egna tider
 - Publik bokningssida utan inloggning och utan kakor för besökaren
 - Översikt över allt som går att boka: tjänster med en värd grupperade per person,
   och tjänster med flera värdar under rubriken Gruppbokningar. Personsidan visar

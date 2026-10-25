@@ -16,6 +16,7 @@ const feedSync = require('./lib/feed-sync');
 const { kontrolleraAdress } = require('./lib/ics-feed');
 const agentNycklar = require('./lib/agent-nycklar');
 const crmSynk = require('./lib/crm-synk');
+const helgdagar = require('./lib/helgdagar');
 const { RESERVERADE_SLUGS } = require('./lib/admin-routes');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -241,12 +242,22 @@ async function busyFor(user, fromIso, toIso, { ignorePollId = null } = {}) {
   return { busy, booked, calendarChecked: false };
 }
 
-async function loadSchedule(user) {
+/**
+ * Veckoschema och undantag. Röda dagar läggs in som stängda om inte
+ * medHelgdagar är false (adminvyn, som visar dem för sig).
+ */
+async function loadSchedule(user, { medHelgdagar = true } = {}) {
   const [rules, overrides] = await Promise.all([
     q('SELECT weekday, start_min, end_min FROM availability_rules WHERE user_id = $1 ORDER BY weekday, start_min', [user.id]),
     q("SELECT to_char(on_date,'YYYY-MM-DD') AS on_date, unavailable, start_min, end_min, note FROM date_overrides WHERE user_id = $1 AND on_date >= current_date - 1 ORDER BY on_date", [user.id]),
   ]);
-  return { rules: rules.rows, overrides: overrides.rows };
+  if (!medHelgdagar) return { rules: rules.rows, overrides: overrides.rows };
+  // Ett år och en dag framåt räcker: max_days_ahead är högst 365.
+  const idag = DateTime.now().setZone(user.timezone || TZ);
+  return {
+    rules: rules.rows,
+    overrides: helgdagar.medHelgdagar(overrides.rows, idag.minus({ days: 1 }).toISODate(), idag.plus({ days: 400 }).toISODate()),
+  };
 }
 
 async function findHostAndEvent(hostSlug, eventSlug) {
@@ -1254,8 +1265,11 @@ router.delete('/api/admin/event-types/:id', requireAuth, async (req, res) => {
 /* ---------- admin: veckoschema och undantag ---------- */
 
 router.get('/api/admin/availability', requireAuth, async (req, res) => {
-  const { rules, overrides } = await loadSchedule(req.user);
-  res.json({ rules, overrides });
+  const { rules, overrides } = await loadSchedule(req.user, { medHelgdagar: false });
+  // Röda dagar det närmaste året, för information i adminvyn.
+  const idag = DateTime.now().setZone(req.user.timezone || TZ);
+  const roda = helgdagar.helgdagarMellan(idag.toISODate(), idag.plus({ days: 365 }).toISODate());
+  res.json({ rules, overrides, helgdagar: roda });
 });
 
 router.put('/api/admin/availability', requireAuth, async (req, res) => {
