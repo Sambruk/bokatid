@@ -18,6 +18,33 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
 
   const pollUrl = (token) => `${PUBLIC_URL}/omrostning/${token}`;
 
+  // Gränser för "Dela omröstning". Delningen låter en extern deltagare få
+  // tjänsten att mejla valfria adresser, så den hålls snäv.
+  const DELA_PER_GANG = 10;
+  const DELA_PER_DELTAGARE = 20;
+  const MAX_DELTAGARE = 50;
+
+  /** Får deltagaren dela vidare? Bara den som skaparen själv bjudit in. */
+  const kanDela = (p) => p.added_by == null && Boolean(p.invited_at);
+
+  /**
+   * Inbjudan eller påminnelse till en deltagare. Skaparens egna inbjudna får
+   * knappen "Dela omröstning"; den som lagts till av en deltagare får veta av vem.
+   */
+  function inbjudan({ poll, host, deltagare, options, alla = [] }) {
+    const svarUrl = `${pollUrl(poll.public_token)}?svar=${deltagare.token}`;
+    const delare = deltagare.added_by != null ? alla.find((x) => x.id === deltagare.added_by) : null;
+    return mail.sendPollInvitation({
+      poll,
+      host,
+      participant: deltagare,
+      url: svarUrl,
+      options,
+      delaUrl: deltagare.added_by == null ? `${svarUrl}&dela=1` : null,
+      delatAv: delare ? delare.name : deltagare.added_by != null ? 'En annan deltagare' : null,
+    });
+  }
+
   /* ---------- agentnycklar ---------- */
 
   // Märkningen i granskningsloggen när ändringen gjorts med en agentnyckel.
@@ -337,13 +364,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     if (!deltagare.length) return;
     const optioner = (await q('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY start_utc', [poll.id])).rows;
     for (const d of deltagare) {
-      const svar = await mail.sendPollInvitation({
-        poll,
-        host: user,
-        participant: d,
-        url: `${pollUrl(poll.public_token)}?svar=${d.token}`,
-        options: optioner,
-      });
+      const svar = await inbjudan({ poll, host: user, deltagare: d, options: optioner });
       if (svar.sent) await q('UPDATE poll_participants SET invited_at = now() WHERE id = $1', [d.id]);
       else await audit('system', 'poll_inbjudan_fel', { pollId: poll.id, participantId: d.id, fel: svar.errors });
     }
@@ -506,6 +527,9 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
         org: p.org,
         invited: Boolean(p.invited_at),
         responded: Boolean(p.responded_at),
+        // Lagd till av en annan deltagare via "Dela omröstning": namnet på den.
+        tillagdAv:
+          p.added_by != null ? poll.participants.find((x) => x.id === p.added_by)?.name || 'En deltagare' : null,
         svar: svarPerDeltagare.get(p.id) || {},
         // Den personliga länken låter vem som helst svara i deltagarens namn;
         // den lämnas inte ut till en agent.
@@ -539,13 +563,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     );
     const deltagare = rows[0];
 
-    const svar = await mail.sendPollInvitation({
-      poll,
-      host: req.user,
-      participant: deltagare,
-      url: `${pollUrl(poll.public_token)}?svar=${deltagare.token}`,
-      options: poll.options,
-    });
+    const svar = await inbjudan({ poll, host: req.user, deltagare, options: poll.options, alla: poll.participants });
     if (svar.sent) await q('UPDATE poll_participants SET invited_at = now() WHERE id = $1', [deltagare.id]);
 
     await audit(req.user.email, 'poll_participant_added', { pollId: poll.id, skickat: svar.sent, viaAgent: viaAgent(req) });
@@ -573,13 +591,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     }
     let skickade = 0;
     for (const p of utan) {
-      const svar = await mail.sendPollInvitation({
-        poll,
-        host: req.user,
-        participant: p,
-        url: `${pollUrl(poll.public_token)}?svar=${p.token}`,
-        options: poll.options,
-      });
+      const svar = await inbjudan({ poll, host: req.user, deltagare: p, options: poll.options, alla: poll.participants });
       if (svar.sent) skickade++;
     }
     await audit(req.user.email, 'poll_reminded', { pollId: poll.id, skickade, utan: utan.length, viaAgent: viaAgent(req) });
@@ -892,13 +904,94 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
             .filter((p) => p.responded_at)
             .map((p) => ({ name: p.name, org: p.org, svar: svarPerDeltagare.get(p.id) || {} })),
       hideNames: poll.hide_names,
-      jag: jag ? { name: jag.name, org: jag.org, svar: egnaSvar } : null,
+      jag: jag
+        ? {
+            // En tillagd deltagare har bara e-postadressen som namn tills hen svarat.
+            name: jag.name === jag.email ? '' : jag.name,
+            org: jag.org,
+            svar: egnaSvar,
+            kanDela: kanDela(jag) && poll.status === 'open',
+          }
+        : null,
       beslutadTid: beslutad
         ? formatSwedish(new Date(beslutad.start_utc).toISOString(), new Date(beslutad.end_utc).toISOString(), tz)
         : null,
       joinUrl: poll.decided_join,
       today: DateTime.now().setZone(TZ).setLocale('sv').toFormat('cccc d LLLL yyyy'),
     });
+  });
+
+  /**
+   * "Dela omröstning": en deltagare som skaparen bjudit in lägger till fler
+   * e-postadresser. De blir vanliga deltagare (märkta med added_by), får en
+   * inbjudan och kan påminnas av skaparen. Kräver den personliga svarslänken.
+   */
+  router.post('/api/poll/:token/share', async (req, res) => {
+    if (!rateLimit(`share:${req.ip}`, 10, 10 * 60_000)) return bad(res, 429, 'För många försök. Försök igen senare.');
+
+    const poll = await loadPollByToken(str(req.params.token, 80));
+    if (!poll) return bad(res, 404, 'Omröstningen finns inte');
+    if (poll.status !== 'open') return bad(res, 409, 'Omröstningen är stängd och kan inte delas.');
+
+    const delare = poll.participants.find((p) => p.token === str(req.body?.svarToken, 80));
+    if (!delare || !kanDela(delare)) {
+      return bad(res, 403, 'Bara den som fått omröstningen av den som skapade den kan dela den.');
+    }
+
+    const radata = Array.isArray(req.body?.epost) ? req.body.epost.join(' ') : str(req.body?.epost, 5000);
+    const adresser = [...new Set(radata.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    if (!adresser.length) return bad(res, 400, 'Ange minst en e-postadress.');
+    if (adresser.length > DELA_PER_GANG) return bad(res, 400, `Du kan dela med högst ${DELA_PER_GANG} adresser åt gången.`);
+    const ogiltiga = adresser.filter((e) => e.length > 254 || !isEmail(e));
+    if (ogiltiga.length) return bad(res, 400, `Ogiltig e-postadress: ${ogiltiga.join(', ')}`);
+
+    const kanda = new Set(poll.participants.map((p) => p.email.toLowerCase()));
+    const fannsRedan = adresser.filter((e) => kanda.has(e));
+    const nya = adresser.filter((e) => !kanda.has(e));
+
+    const redanTillagda = poll.participants.filter((p) => p.added_by === delare.id).length;
+    if (redanTillagda + nya.length > DELA_PER_DELTAGARE) {
+      return bad(res, 409, `Du kan lägga till högst ${DELA_PER_DELTAGARE} personer i den här omröstningen.`);
+    }
+    if (poll.participants.length + nya.length > MAX_DELTAGARE) {
+      return bad(res, 409, `En omröstning kan ha högst ${MAX_DELTAGARE} deltagare.`);
+    }
+
+    const tillagda = [];
+    const ejSkickade = [];
+    for (const epost of nya) {
+      const { rows } = await q(
+        `INSERT INTO poll_participants (poll_id, name, email, token, added_by)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (poll_id, lower(email)) DO NOTHING
+         RETURNING *`,
+        [poll.id, epost, epost, randomToken(18), delare.id]
+      );
+      if (!rows[0]) {
+        fannsRedan.push(epost);
+        continue;
+      }
+      const ny = rows[0];
+      const svar = await inbjudan({
+        poll,
+        host: { name: poll.host_name, email: poll.host_email },
+        deltagare: ny,
+        options: poll.options,
+        alla: [...poll.participants, ny],
+      });
+      if (svar.sent) await q('UPDATE poll_participants SET invited_at = now() WHERE id = $1', [ny.id]);
+      else ejSkickade.push(epost);
+      tillagda.push(epost);
+    }
+
+    await audit(delare.email, 'poll_shared', {
+      pollId: poll.id,
+      delare: delare.id,
+      tillagda: tillagda.length,
+      fannsRedan: fannsRedan.length,
+      ejSkickade: ejSkickade.length,
+    });
+    res.json({ ok: true, tillagda, fannsRedan, ejSkickade });
   });
 
   router.post('/api/poll/:token/vote', async (req, res) => {

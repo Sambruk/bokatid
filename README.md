@@ -336,6 +336,24 @@ den första som bokar bestämmer. En omröstning löser det.
 Blockeringen ligger i databasen och inte bara i kalendern, så en reserverad tid
 kan inte bokas bort av någon annan ens när M365-kopplingen tillfälligt är nere.
 
+### Dela omröstning
+
+Inbjudan till en deltagare som värden själv lagt till har knappen **Dela
+omröstning**. Den öppnar svarssidan med en ruta där deltagaren skriver en eller
+flera e-postadresser. Dessa blir vanliga deltagare: de får en egen inbjudan
+("Anna Andersson har bjudit in dig …"), kan svara, påminnas och tas med när
+tiden beslutas. I adminvyn är de märkta **Tillagd av deltagare** och vem som
+lade till dem.
+
+Delningen får tjänsten att mejla adresser som en extern person anger, så den är
+begränsad:
+
+- bara deltagare som värden bjudit in kan dela — de tillagda kan inte dela vidare,
+  och den som anmält sig själv via den öppna länken kan inte heller dela
+- den personliga svarslänken krävs, och omröstningen måste vara öppen
+- högst 10 adresser åt gången, 20 per deltagare och 50 deltagare totalt
+- adresser som redan är med får ingen ny inbjudan
+
 ### Rensning
 
 En omröstning sparar namn och e-postadresser till externa deltagare, så den ska

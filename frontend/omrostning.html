@@ -28,6 +28,26 @@
 
     <p id="notis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
 
+    <p id="delaRad" class="rad rad--knappar" hidden>
+      <button type="button" class="knapp--enkel" id="delaKnapp" aria-haspopup="dialog">Dela omröstning</button>
+    </p>
+
+    <dialog id="delaDialog" class="dela-dialog" aria-labelledby="delaRubrik">
+      <form id="delaFormular" method="dialog">
+        <h2 id="delaRubrik" style="margin-top:0">Dela omröstningen</h2>
+        <p class="meta">De du lägger till får en egen inbjudan och kan svara på vilka tider som
+           passar dem. Den som skapade omröstningen ser att du lagt till dem.</p>
+        <label for="delaEpost">E-postadresser <span class="hjalptext">(en per rad, eller åtskilda med komma)</span></label>
+        <textarea id="delaEpost" autocomplete="off" spellcheck="false" inputmode="email" aria-describedby="delaHjalp" required></textarea>
+        <p class="hjalptext hjalptext--under" id="delaHjalp">Högst 10 adresser åt gången.</p>
+        <p id="delaNotis" class="notis notis--info" role="status" aria-live="polite" hidden></p>
+        <p class="rad rad--knappar">
+          <button type="submit" id="delaSkicka" value="skicka">Skicka inbjudan</button>
+          <button type="button" class="knapp--enkel" id="delaStang">Stäng</button>
+        </p>
+      </form>
+    </dialog>
+
     <section id="beslutad" class="kort" hidden aria-labelledby="rubrik-beslutad">
       <h2 id="rubrik-beslutad" tabindex="-1" style="margin-top:0">Tiden är bestämd</h2>
       <p id="beslutadTid" style="font-size:1.1rem;font-weight:600"></p>
@@ -139,6 +159,52 @@
     if (Object.keys(data.jag.svar).length) {
       notis(meddelande, 'Du har redan svarat. Ändra gärna om något har förändrats.', 'info');
     }
+  }
+
+  // Dela omröstning: bara för den som skaparen själv bjudit in. Länken i
+  // inbjudningsmailet har ?dela=1 och öppnar rutan direkt.
+  if (data.jag?.kanDela) {
+    const dialog = document.getElementById('delaDialog');
+    const falt = document.getElementById('delaEpost');
+    const delaNotis = document.getElementById('delaNotis');
+    const delaKnapp = document.getElementById('delaKnapp');
+    const oppna = () => {
+      rensaNotis(delaNotis);
+      dialog.showModal();
+      falt.focus();
+    };
+    document.getElementById('delaRad').hidden = false;
+    delaKnapp.addEventListener('click', oppna);
+    document.getElementById('delaStang').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => delaKnapp.focus());
+
+    document.getElementById('delaFormular').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const adresser = falt.value.split(/[\s,;]+/).filter(Boolean);
+      if (!adresser.length) {
+        falt.setAttribute('aria-invalid', 'true');
+        return notis(delaNotis, 'Skriv minst en e-postadress.', 'fel');
+      }
+      falt.removeAttribute('aria-invalid');
+      const skickaKnapp = document.getElementById('delaSkicka');
+      skickaKnapp.disabled = true;
+      try {
+        const r = await skicka(`${bas}/api/poll/${encodeURIComponent(token)}/share`, { svarToken, epost: adresser });
+        const delar = [];
+        if (r.tillagda.length) delar.push(`Inbjudan skickad till ${r.tillagda.join(', ')}.`);
+        if (r.fannsRedan.length) delar.push(`Redan med i omröstningen: ${r.fannsRedan.join(', ')}.`);
+        if (r.ejSkickade.length) delar.push(`Mejlet till ${r.ejSkickade.join(', ')} gick inte iväg, men de är tillagda och den som skapade omröstningen kan skicka en påminnelse.`);
+        notis(delaNotis, delar.join(' '), r.ejSkickade.length ? 'fel' : 'ok');
+        if (r.tillagda.length) falt.value = '';
+      } catch (err) {
+        falt.setAttribute('aria-invalid', 'true');
+        notis(delaNotis, err.message, 'fel');
+      } finally {
+        skickaKnapp.disabled = false;
+      }
+    });
+
+    if (new URLSearchParams(location.search).get('dela') === '1') oppna();
   }
 
   // Ett fält per föreslagen tid, med tre svarsalternativ.

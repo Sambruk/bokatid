@@ -258,18 +258,45 @@ async function sendCoHostNotice({ booking, host, coHost, eventType, cancelUrl })
 const tidRad = (o) => formatSwedish(new Date(o.start_utc).toISOString(), new Date(o.end_utc).toISOString(), TZ);
 
 /** Inbjudan att svara på en omröstning. Ingen kalenderfil: tiden är inte beslutad. */
-async function sendPollInvitation({ poll, host, participant, url, options }) {
+/** En länk som ser ut som en knapp, även i Outlook (tabell + inline-stil). */
+function mailKnapp(url, text) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td style="background:#3F7A11;border-radius:6px">
+      <a href="${esc(url)}" style="display:inline-block;padding:10px 18px;color:#ffffff;font-weight:600;text-decoration:none">${esc(text)}</a>
+    </td></tr></table>`;
+}
+
+/**
+ * Inbjudan (och påminnelse) till en omröstning.
+ * delaUrl: sätts för deltagare som skaparen själv bjudit in — de får knappen
+ * "Dela omröstning". delatAv: namnet på deltagaren som lagt till mottagaren.
+ */
+async function sendPollInvitation({ poll, host, participant, url, options, delaUrl = null, delatAv = null }) {
   const tp = transport();
   if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
 
   const tider = options.map((o) => `<li>${esc(tidRad(o))}</li>`).join('');
+  // En tillagd deltagare har bara e-postadressen som namn tills hen svarat.
+  const halsning = participant.name && participant.name !== participant.email ? `Hej ${esc(participant.name)},` : 'Hej,';
   const html = `
-    <p>Hej ${esc(participant.name)},</p>
-    <p>${esc(host.name)} vill boka <strong>${esc(poll.title)}</strong> och behöver veta
-       vilka tider som fungerar för dig.</p>
+    <p>${halsning}</p>
+    ${
+      delatAv
+        ? `<p>${esc(delatAv)} har bjudit in dig att svara i en omröstning om mötestid.
+           ${esc(host.name)} vill boka <strong>${esc(poll.title)}</strong> och behöver veta
+           vilka tider som fungerar för dig.</p>`
+        : `<p>${esc(host.name)} vill boka <strong>${esc(poll.title)}</strong> och behöver veta
+           vilka tider som fungerar för dig.</p>`
+    }
     ${poll.description ? `<p>${esc(poll.description)}</p>` : ''}
     <p><a href="${esc(url)}">Svara här</a><br>
        <span style="color:#53605a">${esc(url)}</span></p>
+    ${
+      delaUrl
+        ? `<p>Är det fler som borde vara med? Dela omröstningen, så kan de också svara.</p>
+           ${mailKnapp(delaUrl, 'Dela omröstning')}`
+        : ''
+    }
     <p>Föreslagna tider (svensk tid), mötet är ${esc(String(poll.duration_min))} minuter:</p>
     <ul>${tider}</ul>
     ${poll.deadline ? `<p>Svara gärna senast ${esc(formatSwedish(new Date(poll.deadline).toISOString(), new Date(poll.deadline).toISOString(), TZ).split(',')[0])}.</p>` : ''}

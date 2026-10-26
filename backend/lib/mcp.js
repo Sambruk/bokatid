@@ -391,6 +391,7 @@ function mcpRoutes({ router, port }) {
                 organisation: x.org || undefined,
                 inbjuden: x.invited,
                 svarat: x.responded,
+                tillagd_av_deltagare: x.tillagdAv || undefined,
                 svar: Object.fromEntries(Object.entries(x.svar).map(([tid, s]) => [tid, SVAR_SV[s] || s])),
               })),
               ej_svarat: d.participants.filter((x) => !x.responded).map((x) => x.name),

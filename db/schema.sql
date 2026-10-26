@@ -367,3 +367,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS event_types_system_typ ON event_types (user_id
 -- Bokning gjord via ett ämne: ämnet ger rubriken ("Samtal om …") och rundgången.
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS amne_id TEXT REFERENCES amnen(crm_id) ON DELETE SET NULL;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rubrik TEXT;
+
+-- Deltagare som lagts till av en annan deltagare via "Dela omröstning". NULL =
+-- inbjuden av skaparen (eller anmäld själv via den öppna länken). Bara skaparens
+-- egna inbjudna får dela vidare, så kedjan blir högst ett led lång.
+ALTER TABLE poll_participants ADD COLUMN IF NOT EXISTS added_by INTEGER REFERENCES poll_participants(id) ON DELETE SET NULL;

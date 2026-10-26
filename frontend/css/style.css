@@ -377,3 +377,18 @@ details.avslutade { margin-top: 1.25rem; }
 details.avslutade > summary { cursor: pointer; font-weight: 600; color: var(--gron); padding: 0.35rem 0; }
 details.avslutade > summary:hover { color: var(--gron-mork); text-decoration: underline; }
 details.avslutade[open] > summary { margin-bottom: 0.5rem; }
+
+/* "Dela omröstning": modal ruta på svarssidan. */
+.dela-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--linje);
+  border-radius: var(--radie);
+  padding: 1.25rem;
+  background: var(--vit);
+  color: inherit;
+}
+.dela-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.dela-dialog textarea { width: 100%; }
+/* Etikett under ett namn i en tabellrubrik, t.ex. "Tillagd av deltagare". */
+.etikett--block { margin: 0.3rem 0.4rem 0 0; text-transform: none; letter-spacing: 0; font-size: 0.75rem; }
+.etikett--block + .hjalptext { display: block; }

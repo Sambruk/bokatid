@@ -1706,6 +1706,16 @@
       const th = document.createElement('th');
       th.scope = 'col';
       th.textContent = p.name;
+      // Lagd till av en annan deltagare via "Dela omröstning".
+      if (p.tillagdAv) {
+        const tagg = document.createElement('span');
+        tagg.className = 'etikett etikett--block';
+        tagg.textContent = 'Tillagd av deltagare';
+        const vem = document.createElement('span');
+        vem.className = 'hjalptext';
+        vem.textContent = `av ${p.tillagdAv}`;
+        th.append(document.createElement('br'), tagg, vem);
+      }
       rubrikRad.append(th);
     }
     const tbody = tabell.createTBody();
@@ -1734,7 +1744,9 @@
     if (utanSvar.length) {
       const p = document.createElement('p');
       p.className = 'meta';
-      p.textContent = `Väntar på svar från: ${utanSvar.map((x) => x.name).join(', ')}`;
+      p.textContent = `Väntar på svar från: ${utanSvar
+        .map((x) => (x.tillagdAv ? `${x.name} (tillagd av ${x.tillagdAv})` : x.name))
+        .join(', ')}`;
       ut.append(p);
     }
 
