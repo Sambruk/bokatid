@@ -193,7 +193,7 @@ function mcpRoutes({ router, port }) {
             namn: z.string().min(2).max(120).describe('Namn på den som ska delta i mötet'),
             epost: z.string().email().describe('E-post dit inbjudan skickas'),
             organisation: z.string().max(160).optional(),
-            svar: z.record(z.string()).optional().describe('Svar på tjänstens frågor, nyckel → svar'),
+            svar: z.record(z.string(), z.string()).optional().describe('Svar på tjänstens frågor, nyckel → svar'),
           },
           annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
         },

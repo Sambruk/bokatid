@@ -126,7 +126,7 @@ async function sendBookingMails({ booking, host, eventType, cancelUrl, withIcs =
     utskick.push(
       tp.sendMail({
         from: sender(),
-        to: `"${booking.invitee_name}" <${booking.invitee_email}>`,
+        to: { name: String(booking.invitee_name || ""), address: booking.invitee_email },
         subject: `Bekräftelse: ${eventType.title} — ${when}`,
         html: inviteeHtml,
         ...invite,
@@ -167,7 +167,7 @@ async function sendCancellationMails({ booking, host, eventType, reason, cancell
   const results = await Promise.allSettled([
     tp.sendMail({
       from: sender(),
-      to: `"${booking.invitee_name}" <${booking.invitee_email}>`,
+      to: { name: String(booking.invitee_name || ""), address: booking.invitee_email },
       subject: `Avbokat: ${eventType.title} — ${when}`,
       html,
       ...invite,
@@ -185,7 +185,7 @@ async function sendPasswordReset({ user, url, giltigMinuter = 60 }) {
   try {
     await tp.sendMail({
       from: sender(),
-      to: `"${user.name}" <${user.email}>`,
+      to: { name: String(user.name || ""), address: user.email },
       subject: 'Återställ ditt lösenord — Boka tid',
       html: `
         <p>Hej ${esc(user.name)},</p>
@@ -239,7 +239,7 @@ async function sendCoHostNotice({ booking, host, coHost, eventType, cancelUrl })
   try {
     await tp.sendMail({
       from: sender(),
-      to: `"${coHost.name}" <${coHost.email}>`,
+      to: { name: String(coHost.name || ""), address: coHost.email },
       subject: `Bokat möte: ${eventType.title} — ${when}`,
       html,
       attachments: [
@@ -319,7 +319,7 @@ async function sendPollInvitation({ poll, host, participant, url, options, delaU
   try {
     await tp.sendMail({
       from: sender(),
-      to: `"${participant.name}" <${participant.email}>`,
+      to: { name: String(participant.name || ""), address: participant.email },
       subject: `Vilka tider passar dig? ${poll.title}`,
       html,
     });
@@ -371,7 +371,7 @@ async function sendPollVoteReceipt({ poll, host, participant, val, kanskeText = 
   try {
     await tp.sendMail({
       from: sender(),
-      to: `"${participant.name}" <${participant.email}>`,
+      to: { name: String(participant.name || ""), address: participant.email },
       subject: `Ditt svar om tid: ${poll.title}`,
       html,
       ...(ics
@@ -463,7 +463,7 @@ async function sendPollDecision({ poll, host, option, participants, joinUrl, wit
 
       return tp.sendMail({
         from: sender(),
-        to: `"${p.name}" <${p.email}>`,
+        to: { name: String(p.name || ""), address: p.email },
         subject: `${baraBesked ? 'Beslutad tid' : 'Tiden är bestämd'}: ${poll.title} — ${when}`,
         html: `
           <p>Hej ${esc(p.name)},</p>
@@ -499,7 +499,7 @@ async function sendPollCancelled({ poll, host, participants, reason }) {
     participants.map((p) =>
       tp.sendMail({
         from: sender(),
-        to: `"${p.name}" <${p.email}>`,
+        to: { name: String(p.name || ""), address: p.email },
         subject: `Inställt: ${poll.title}`,
         html: `
           <p>Hej ${esc(p.name)},</p>
