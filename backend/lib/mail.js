@@ -258,12 +258,25 @@ async function sendCoHostNotice({ booking, host, coHost, eventType, cancelUrl })
 const tidRad = (o) => formatSwedish(new Date(o.start_utc).toISOString(), new Date(o.end_utc).toISOString(), TZ);
 
 /** Inbjudan att svara på en omröstning. Ingen kalenderfil: tiden är inte beslutad. */
-/** En länk som ser ut som en knapp, även i Outlook (tabell + inline-stil). */
+/**
+ * En länk som ser ut som en knapp, även i Outlook för Windows. Den använder
+ * Words renderare, som ignorerar CSS-bakgrund och padding på <a>. Därför ligger
+ * färgen som bgcolor och luften som padding på cellen, och Outlook får en
+ * VML-knapp i en villkorskommentar.
+ */
 function mailKnapp(url, text) {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="background:#3F7A11;border-radius:6px">
-      <a href="${esc(url)}" style="display:inline-block;padding:10px 18px;color:#ffffff;font-weight:600;text-decoration:none">${esc(text)}</a>
-    </td></tr></table>`;
+  const u = esc(url);
+  const t = esc(text);
+  return `<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${u}" style="height:42px;v-text-anchor:middle;width:220px;" arcsize="14%" stroke="f" fillcolor="#3F7A11">
+<w:anchorlock/><center style="color:#ffffff;font-family:Segoe UI,Arial,sans-serif;font-size:15px;font-weight:bold;">${t}</center>
+</v:roundrect>
+<![endif]--><!--[if !mso]><!-->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tr>
+<td align="center" bgcolor="#3F7A11" style="background-color:#3F7A11;border-radius:6px;padding:11px 20px">
+<a href="${u}" target="_blank" style="color:#ffffff;font-family:Segoe UI,Arial,sans-serif;font-size:15px;font-weight:bold;text-decoration:none;display:inline-block">${t}</a>
+</td></tr></table>
+<!--<![endif]-->`;
 }
 
 /**
