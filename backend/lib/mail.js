@@ -302,8 +302,8 @@ async function sendPollInvitation({ poll, host, participant, url, options, delaU
            vilka tider som fungerar för dig.</p>`
     }
     ${poll.description ? `<p>${esc(poll.description)}</p>` : ''}
-    <p><a href="${esc(url)}">Svara här</a><br>
-       <span style="color:#53605a">${esc(url)}</span></p>
+    ${mailKnapp(url, 'Svara här')}
+    <p style="margin-top:6px"><span style="color:#53605a">Fungerar inte knappen? Klistra in adressen i webbläsaren:<br>${esc(url)}</span></p>
     ${
       delaUrl
         ? `<p>Är det fler som borde vara med? Dela omröstningen, så kan de också svara.</p>
