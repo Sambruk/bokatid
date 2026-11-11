@@ -1791,7 +1791,7 @@
           if (svar.releasedHolds) rader.push(`${svar.releasedHolds} reservationer släppta.`);
           rader.push(
             svar.beskedViaOutlook
-              ? `Outlook skickar inbjudan till ${svar.antalDeltagare} deltagare — tjänsten skickar inget extra mail.`
+              ? `Outlook skickar inbjudan till ${svar.antalDeltagare} deltagare. Tjänsten skickar dessutom ett besked med kalenderfil och vilka preliminära tider var och en ska ta bort.`
               : svar.mailAccepted
                 ? 'Deltagarna har fått besked med kalenderfil.'
                 : 'Besked via e-post misslyckades.'

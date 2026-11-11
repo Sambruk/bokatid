@@ -456,6 +456,20 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     return borttagna;
   }
 
+  /**
+   * Tider som varje deltagare fått som preliminära i kvittots kalenderfil.
+   * Boka kan inte ta bort dem ur deltagarens kalender, så de listas i beskedet.
+   */
+  function preliminaraPerDeltagare(poll) {
+    const map = new Map();
+    for (const d of poll.participants) {
+      const ids = new Set(d.ics_option_ids || []);
+      const tider = poll.options.filter((o) => ids.has(o.id));
+      if (tider.length) map.set(d.id, tider);
+    }
+    return map;
+  }
+
   /* ---------- admin: lista och visa ---------- */
 
   router.get('/api/admin/polls', requireAuth, async (req, res) => {
@@ -641,6 +655,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     let calendarWritten = false;
     let joinUrl = null;
     let eventId = null;
+    let icalUid = null;
     const auth = await accessTokenFor(req.user.id);
 
     if (auth) {
@@ -675,6 +690,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
           },
         });
         eventId = created.id;
+        icalUid = created.iCalUId || null;
         joinUrl = created.onlineMeeting?.joinUrl || created.onlineMeetingUrl || null;
         calendarWritten = true;
       } catch (err) {
@@ -692,21 +708,23 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
     );
 
     /*
-     * Ett mail per person. Skapades mötet i kalendern skickar Outlook sin egen
-     * inbjudan till deltagarna, och då skickar vi inget eget — det skulle bara
-     * upprepa samma uppgifter. Misslyckades kalenderskrivningen är vårt mail med
-     * kalenderfil det enda beskedet som går ut.
+     * Alla får ett besked från oss med den slutliga tiden som kalenderfil och en
+     * lista över de preliminära bokningar de själva ska ta bort (Thomas beslut
+     * 2026-11-11). Skapades mötet i Outlook skickar Outlook dessutom sin
+     * inbjudan; vår fil har då mötets eget UID, så det blir ett möte, inte två.
      */
-    const mailResultat = calendarWritten
-      ? { sent: true, viaOutlook: true }
-      : await mail.sendPollDecision({
-          poll,
-          host: req.user,
-          option,
-          participants: deltagare,
-          joinUrl,
-          withIcs: true,
-        });
+    const preliminara = preliminaraPerDeltagare(poll);
+    const mailResultat = await mail.sendPollDecision({
+      poll,
+      host: req.user,
+      option,
+      participants: deltagare,
+      joinUrl,
+      withIcs: true,
+      icsUid: calendarWritten ? icalUid : null,
+      preliminara,
+    });
+    mailResultat.viaOutlook = calendarWritten;
 
     // De som inte är med på mötet får ingen inbjudan från Outlook, så de får ett
     // kort besked om att tiden är bestämd.
@@ -719,6 +737,7 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
           joinUrl,
           withIcs: false,
           baraBesked: true,
+          preliminara,
         })
       : { sent: true };
 
@@ -765,7 +784,13 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
 
     const mottagare = poll.participants.filter((p) => p.invited_at);
     const mailResultat = mottagare.length
-      ? await mail.sendPollCancelled({ poll, host: req.user, participants: mottagare, reason })
+      ? await mail.sendPollCancelled({
+          poll,
+          host: req.user,
+          participants: mottagare,
+          reason,
+          preliminara: preliminaraPerDeltagare(poll),
+        })
       : { sent: true };
 
     await audit(req.user.email, 'poll_cancelled', {
@@ -1050,6 +1075,12 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       .map((o) => ({ option: o, answer: svar[o.id] }))
       .sort((a, b) => new Date(a.option.start_utc) - new Date(b.option.start_utc));
 
+    // Tider deltagaren tidigare fått som preliminära men nu svarat nej på (eller
+    // inte svarat på): de listas i kvittot så att hen tar bort dem själv.
+    const tidigare = new Set(deltagare.ics_option_ids || []);
+    const kanNu = new Set(val.filter((v) => v.answer !== 'nej').map((v) => v.option.id));
+    const struknaTider = poll.options.filter((o) => tidigare.has(o.id) && !kanNu.has(o.id));
+
     const kvitto = await mail.sendPollVoteReceipt({
       poll,
       host: { name: poll.host_name, email: poll.host_email },
@@ -1057,7 +1088,19 @@ module.exports = function pollRoutes({ router, requireAuth, helpers }) {
       val,
       kanskeText: org.kanskeText || 'Om jag måste',
       url: `${pollUrl(poll.public_token)}?svar=${deltagare.token}`,
+      struknaTider,
     });
+
+    // Allt som någon gång skickats som preliminärt ligger kvar i listan: Boka
+    // vet inte om deltagaren tagit bort det, så beslutsbeskedet nämner alla.
+    if (kvitto.sent && kvitto.reserveradeIds?.length) {
+      await q(
+        `UPDATE poll_participants
+           SET ics_option_ids = ARRAY(SELECT DISTINCT unnest(ics_option_ids || $2::int[]) ORDER BY 1)
+         WHERE id = $1`,
+        [deltagare.id, kvitto.reserveradeIds]
+      );
+    }
 
     await audit(email, 'poll_voted', {
       pollId: poll.id,

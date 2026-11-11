@@ -335,7 +335,7 @@ async function sendPollInvitation({ poll, host, participant, url, options, delaU
  * inte REQUEST — det här är inte en inbjudan utan deltagarens egen reservation,
  * och tiden är ännu inte bestämd.
  */
-async function sendPollVoteReceipt({ poll, host, participant, val, kanskeText = 'Om jag måste', url }) {
+async function sendPollVoteReceipt({ poll, host, participant, val, kanskeText = 'Om jag måste', url, struknaTider = [] }) {
   const tp = transport();
   if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
 
@@ -358,11 +358,18 @@ async function sendPollVoteReceipt({ poll, host, participant, val, kanskeText = 
     </table>
     ${
       ics
-        ? `<p>Bifogat ligger en kalenderfil med de tider du kan. Öppna den om du vill
-           lägga in dem som <strong>preliminära</strong> i din egen kalender, så att ingen
-           annan bokar dem under tiden. Den som inte blir av tar du bort själv.</p>`
+        ? `<p>Bifogat ligger en kalenderfil med de tider du kan. Öppnar du den hamnar
+           <strong>alla tiderna som preliminära bokningar</strong> i din kalender, så att
+           ingen annan bokar dem under tiden.</p>
+           <p><strong>Observera:</strong> de preliminära bokningarna försvinner inte av sig
+           själva — du tar bort dem själv. När tiden är bestämd får du ett mejl som visar
+           exakt vilka du ska ta bort, och en ny kalenderfil med den slutliga tiden.</p>`
         : ''
     }
+    ${preliminarLista(
+      struknaTider,
+      'Du har tidigare fått de här tiderna som preliminära, men kan inte längre. Har du lagt in dem i kalendern tar du bort dem själv:'
+    )}
     <p>Vill du ändra ditt svar går det bra fram till att tiden bestäms:<br>
        <a href="${esc(url)}">${esc(url)}</a></p>
     <p>Du får besked när tiden är bestämd.</p>
@@ -386,10 +393,34 @@ async function sendPollVoteReceipt({ poll, host, participant, val, kanskeText = 
           }
         : {}),
     });
-    return { sent: true, reserverade: attReservera.length };
+    return { sent: true, reserverade: attReservera.length, reserveradeIds: ics ? attReservera.map((o) => o.id) : [] };
   } catch (err) {
     return { sent: false, errors: [String(err.message)] };
   }
+}
+
+/**
+ * UID för en deltagares preliminära post. Samma UID i kvittot och i
+ * avbokningen — det är det enda som pekar ut posten i deltagarens kalender.
+ */
+const tentativeUid = (poll, o, participant) => `poll-${poll.id}-opt-${o.id}-p${participant.id}@boka.sambruk.se`;
+
+/**
+ * Lista över preliminära bokningar som deltagaren själv ska ta bort. Boka når
+ * inte deltagarens kalender, och Exchange godtar inte en avbokning från oss för
+ * poster deltagaren själv lagt in (provat 2026-11-11) — så det enda vi kan göra
+ * är att säga exakt vilka det gäller.
+ */
+function preliminarLista(tider, inledning) {
+  if (!tider || !tider.length) return '';
+  const rader = tider
+    .slice()
+    .sort((a, b) => new Date(a.start_utc) - new Date(b.start_utc))
+    .map((o) => `<li>${esc(tidRad(o))}</li>`)
+    .join('');
+  return `<div style="border-left:4px solid #b45309;padding:4px 12px;margin:12px 0">
+      <p><strong>Ta bort preliminära bokningar</strong><br>${esc(inledning)}</p>
+      <ul>${rader}</ul></div>`;
 }
 
 /** En kalenderfil med flera preliminära poster, en per vald tid. */
@@ -404,7 +435,7 @@ function buildTentativeIcs({ poll, host, participant, options }) {
   for (const o of options) {
     rader.push(
       'BEGIN:VEVENT',
-      `UID:poll-${poll.id}-opt-${o.id}-p${participant.id}@boka.sambruk.se`,
+      `UID:${tentativeUid(poll, o, participant)}`,
       `DTSTAMP:${icsStamp(new Date().toISOString())}`,
       `DTSTART:${icsStamp(o.start_utc)}`,
       `DTEND:${icsStamp(o.end_utc)}`,
@@ -428,7 +459,7 @@ function buildTentativeIcs({ poll, host, participant, options }) {
  * Outlook den riktiga inbjudan till deltagarna, och då bifogas ingen egen
  * kalenderfil här.
  */
-async function sendPollDecision({ poll, host, option, participants, joinUrl, withIcs, baraBesked = false }) {
+async function sendPollDecision({ poll, host, option, participants, joinUrl, withIcs, baraBesked = false, icsUid = null, preliminara = new Map() }) {
   const tp = transport();
   if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
 
@@ -442,7 +473,9 @@ async function sendPollDecision({ poll, host, option, participants, joinUrl, wit
       const ics = withIcs
         ? buildIcs({
             booking: {
-              ics_uid: `poll-${poll.id}-${option.id}@boka.sambruk.se`,
+              // Skapades mötet i Outlook används dess UID, så att vår fil och
+              // Outlooks inbjudan blir samma möte i kalendern och inte två.
+              ics_uid: icsUid || `poll-${poll.id}-${option.id}@boka.sambruk.se`,
               ics_sequence: 0,
               start_utc: option.start_utc,
               end_utc: option.end_utc,
@@ -457,7 +490,9 @@ async function sendPollDecision({ poll, host, option, participants, joinUrl, wit
               location_type: poll.location_type,
               location_text: poll.location_text,
             },
-            method: 'REQUEST',
+            // Finns mötet redan i Outlook är filen bara en kopia att lägga in:
+            // PUBLISH, inte en ny mötesförfrågan.
+            method: icsUid ? 'PUBLISH' : 'REQUEST',
           })
         : null;
 
@@ -475,15 +510,41 @@ async function sendPollDecision({ poll, host, option, participants, joinUrl, wit
               ? '<p>Det här är bara ett besked om tiden — du är inte inbjuden till mötet.</p>'
               : '<p>Tack för ditt svar.</p>'
           }
+          ${preliminarLista(
+            preliminara.get(p.id),
+            'Du fick de här tiderna som preliminära i kvittot på ditt svar. Har du lagt in dem i kalendern ligger de kvar tills du tar bort dem själv' +
+              (baraBesked ? ':' : ' — även den tid som blev vald, eftersom den slutliga tiden kommer som en ny post:')
+          )}
+          ${
+            ics
+              ? `<p><strong>Den slutliga tiden</strong> finns i den bifogade kalenderfilen
+                 <em>mote.ics</em>. Öppna den för att lägga in mötet i din kalender.${
+                   icsUid ? ' Har du redan fått och accepterat inbjudan från Outlook är mötet redan inlagt.' : ''
+                 }</p>`
+              : ''
+          }
           <p>Hälsningar<br>${esc(host.name)} via Sambruk</p>`,
-        ...(ics
+        /*
+         * Skapades mötet i Outlook bifogas filen BARA som fil. Som mötesförfrågan
+         * i själva mejlet (icalEvent) med Outlook-mötets UID behandlar Exchange
+         * hela mejlet automatiskt och kan ta bort det i tysthet — provat
+         * 2026-11-11: beskedet kom aldrig fram, med listan över preliminära
+         * tider. Utan Outlook-möte är vår förfrågan den enda inbjudan.
+         */
+        ...(ics && icsUid
           ? {
               attachments: [
-                { filename: 'mote.ics', content: ics, contentType: 'text/calendar; charset=utf-8; method=REQUEST' },
+                { filename: 'mote.ics', content: ics, contentType: 'text/calendar; charset=utf-8; method=PUBLISH' },
               ],
-              icalEvent: { method: 'REQUEST', content: ics },
             }
-          : {}),
+          : ics
+            ? {
+                attachments: [
+                  { filename: 'mote.ics', content: ics, contentType: 'text/calendar; charset=utf-8; method=REQUEST' },
+                ],
+                icalEvent: { method: 'REQUEST', content: ics },
+              }
+            : {}),
       });
     })
   );
@@ -492,7 +553,7 @@ async function sendPollDecision({ poll, host, option, participants, joinUrl, wit
 }
 
 /** Besked om att omröstningen avbrutits. */
-async function sendPollCancelled({ poll, host, participants, reason }) {
+async function sendPollCancelled({ poll, host, participants, reason, preliminara = new Map() }) {
   const tp = transport();
   if (!tp) return { sent: false, reason: 'SMTP_HOST saknas' };
   const resultat = await Promise.allSettled(
@@ -506,6 +567,10 @@ async function sendPollCancelled({ poll, host, participants, reason }) {
           <p>Omröstningen om tid för <strong>${esc(poll.title)}</strong> är avbruten,
              och något möte bokas inte utifrån den.</p>
           ${reason ? `<p>Angiven orsak: ${esc(reason)}</p>` : ''}
+          ${preliminarLista(
+            preliminara.get(p.id),
+            'Du fick de här tiderna som preliminära i kvittot på ditt svar. Har du lagt in dem i kalendern tar du bort dem själv:'
+          )}
           <p>Hälsningar<br>${esc(host.name)} via Sambruk</p>`,
       })
     )
@@ -546,6 +611,7 @@ module.exports = {
   sendCoHostNotice,
   sendPollVoteReceipt,
   buildTentativeIcs,
+  preliminarLista,
   sendBookingMails,
   sendCancellationMails,
   sendPollInvitation,

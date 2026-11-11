@@ -372,3 +372,9 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rubrik TEXT;
 -- inbjuden av skaparen (eller anmäld själv via den öppna länken). Bara skaparens
 -- egna inbjudna får dela vidare, så kedjan blir högst ett led lång.
 ALTER TABLE poll_participants ADD COLUMN IF NOT EXISTS added_by INTEGER REFERENCES poll_participants(id) ON DELETE SET NULL;
+
+-- Alla tider som deltagaren fått som preliminära i kvittots kalenderfil. Boka
+-- når inte deltagarens kalender (och Outlook godtar ingen avbokning från oss för
+-- poster deltagaren själv lagt in), så besluts- och avbrottsbeskedet listar dem
+-- som deltagaren ska ta bort själv.
+ALTER TABLE poll_participants ADD COLUMN IF NOT EXISTS ics_option_ids INTEGER[] NOT NULL DEFAULT '{}';
